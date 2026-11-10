@@ -197,9 +197,20 @@ server.on("upgrade", (request, socket, head) => {
     previous?.close(4001, "replaced_by_new_connection");
     sockets.set(sessionId, webSocket);
     webSocket.on("close", () => {
-      if (sockets.get(sessionId) === webSocket) sockets.delete(sessionId);
+      if (sockets.get(sessionId) !== webSocket) return;
+      sockets.delete(sessionId);
+      try { roomService.setConnection(sessionId, false, Date.now()); } catch { /* A removed participant has no session. */ }
+      broadcastSnapshots();
     });
+    try {
+      roomService.setConnection(sessionId, true, Date.now());
+      initialSnapshot = roomService.getSnapshot(sessionId);
+    } catch {
+      webSocket.close(4001, "session_expired");
+      return;
+    }
     webSocket.send(JSON.stringify({ type: "snapshot", snapshot: initialSnapshot }));
+    broadcastSnapshots();
   });
 });
 
