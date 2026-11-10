@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Check, Play, SignOut, X } from "@phosphor-icons/react";
 import type { DrawingOperation } from "@webflipper/canvas";
-import type { Participant, RoomState } from "@webflipper/domain";
+import { ROOM_CAPACITIES, type Participant, type RoomState } from "@webflipper/domain";
 import { api, subscribeToRoom, type ClientCommand, type Snapshot } from "./api";
 import { DrawingBoard } from "./components/DrawingBoard";
 import { HostWaitingScreen } from "./components/HostWaitingScreen";
@@ -48,7 +48,7 @@ export function HomeScreen({ busy, error, notice = null, initialRoomCode, joinOn
           <form onSubmit={(event) => { event.preventDefault(); onCreate({ capacity, answerSeconds, scoreMode }); }}>
             <label>定員
               <select value={capacity} onChange={(event) => setCapacity(Number(event.target.value))}>
-                {Array.from({ length: 10 }, (_, index) => index + 6).map((value) => <option key={value} value={value}>{value}人</option>)}
+                {ROOM_CAPACITIES.map((value) => <option key={value} value={value}>{value}人</option>)}
               </select>
             </label>
             <label>回答時間
@@ -292,7 +292,8 @@ export function getAnswerGridDimensions(answerCount: number) {
   if (answerCount <= 8) return { columns: 4, rows: 2 };
   if (answerCount <= 9) return { columns: 3, rows: 3 };
   if (answerCount <= 12) return { columns: 4, rows: 3 };
-  return { columns: 5, rows: Math.ceil(answerCount / 5) };
+  const columns = answerCount <= 15 ? 5 : Math.ceil(Math.sqrt(answerCount * 2));
+  return { columns, rows: Math.ceil(answerCount / columns) };
 }
 
 export function AnswerGrid({ room, judging, onToggle }: { room: RoomState; judging: boolean; onToggle?(participantId: string): void }) {
@@ -300,11 +301,11 @@ export function AnswerGrid({ room, judging, onToggle }: { room: RoomState; judgi
   const correctIds = new Set(room.round?.correctParticipantIds ?? []);
   const answers = room.round?.answers ?? [];
   const dimensions = getAnswerGridDimensions(answers.length);
-  const mobileColumns = Math.min(answers.length || 1, answers.length > 6 ? 3 : 2);
+  const mobileColumns = Math.min(answers.length || 1, answers.length > 15 ? 5 : answers.length > 6 ? 3 : 2);
   const mobileRows = Math.ceil((answers.length || 1) / mobileColumns);
   return (
     <div
-      className={`answer-grid ${answers.length > 8 ? "answer-grid--dense" : ""}`}
+      className={`answer-grid ${answers.length > 8 ? "answer-grid--dense" : ""} ${answers.length > 15 ? "answer-grid--crowded" : ""}`}
       style={{
         "--answer-columns": dimensions.columns,
         "--answer-rows": dimensions.rows,

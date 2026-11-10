@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createRoomEngine } from "../src/index";
 
 describe("RoomEngine", () => {
+  it.each([6, 9, 11, 49, 51, 55, 10.5])("rejects new rooms with unsupported capacity %i", capacity => {
+    expect(() => createRoomEngine({ roomId: "r", roomCode: "ABC234", hostId: "h", capacity, answerSeconds: 60, scoreMode: "none" })).toThrow("invalid_settings");
+  });
   it("creates a waiting room with the room-only settings", () => {
     const engine = createRoomEngine({
       roomId: "room-1",
@@ -266,7 +269,7 @@ describe("RoomEngine", () => {
       roomId: "room-1",
       roomCode: "K7M4PX",
       hostId: "host-1",
-      capacity: 6,
+      capacity: 10,
       answerSeconds: 60,
       scoreMode: "none"
     });
@@ -275,10 +278,10 @@ describe("RoomEngine", () => {
     expect(() => engine.dispatch({ type: "participant.join", participantId: "p2", name: "alice" }))
       .toThrow("name_taken");
 
-    for (let index = 2; index <= 6; index += 1) {
+    for (let index = 2; index <= 10; index += 1) {
       engine.dispatch({ type: "participant.join", participantId: `p${index}`, name: `参加者${index}` });
     }
-    expect(() => engine.dispatch({ type: "participant.join", participantId: "p7", name: "参加者7" }))
+    expect(() => engine.dispatch({ type: "participant.join", participantId: "p11", name: "参加者11" }))
       .toThrow("room_full");
   });
 

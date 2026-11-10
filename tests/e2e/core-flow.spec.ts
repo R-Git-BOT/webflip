@@ -12,7 +12,11 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await host.goto("/");
   await expect(host).toHaveTitle("WebFlipper");
   await expect(host.getByRole("heading", { name: "手書きクイズ" })).toBeVisible();
+  await expect(host.getByLabel("定員").locator("option")).toHaveText(["10人", "15人", "20人", "25人", "30人", "35人", "40人", "45人", "50人"]);
+  await expect(host.getByLabel("定員")).toHaveValue("10");
+  await host.getByLabel("定員").selectOption("50");
   await host.getByRole("button", { name: "ルームを作る", exact: true }).click();
+  await expect(host.locator(".participant-count")).toHaveText("0 / 50");
   const roomCode = (await host.locator(".room-code").innerText()).trim();
   await expect(roomCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
 

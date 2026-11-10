@@ -1,5 +1,6 @@
 import { createLocalRoomService, type PersistedRoomService, type LocalCommand } from "../../../packages/runtime/src/index";
 import { validatePngDataUrl } from "./png";
+import { isRoomCapacity } from "../../../packages/domain/src/index";
 
 export interface RoomStore {
   get(): Promise<unknown>;
@@ -29,7 +30,7 @@ export function createRoomApi(store: RoomStore, options = { requirePng: false })
       if (request.method === "POST" && url.pathname === "/api/rooms") {
         if (service.exportState().rooms.length) return json({ error: "room_exists" }, 409);
         const input = await request.json() as { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" };
-        if (!Number.isInteger(input.capacity) || input.capacity < 6 || input.capacity > 15 || ![30,60,90,120,180].includes(input.answerSeconds) || !["none", "correct-count"].includes(input.scoreMode)) throw new Error("invalid_settings");
+        if (!isRoomCapacity(input.capacity) || ![30,60,90,120,180].includes(input.answerSeconds) || !["none", "correct-count"].includes(input.scoreMode)) throw new Error("invalid_settings");
         const created = service.createRoom(input);
         response = json({ roomCode: created.roomCode, snapshot: service.getSnapshot(created.sessionId) }, 201, sessionCookie(created.sessionId));
       } else if (request.method === "POST" && /\/api\/rooms\/[A-Z0-9]{6}\/join$/.test(url.pathname)) {

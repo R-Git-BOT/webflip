@@ -1046,6 +1046,16 @@ textarea:focus-visible {
   cursor: default;
 }
 
+.answer-grid--crowded {
+  gap: clamp(3px, 0.5vw, 6px);
+}
+
+.answer-grid--crowded .answer-card__name {
+  min-height: 18px;
+  padding: 1px 3px;
+  font-size: clamp(10px, 1vw, 14px);
+}
+
 .answer-card__surface {
   min-width: 0;
   min-height: 0;

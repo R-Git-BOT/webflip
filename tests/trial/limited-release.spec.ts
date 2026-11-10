@@ -12,6 +12,7 @@ test("requires trial access, saves a PNG answer and rejects refresh bursts", asy
     await page.getByRole("button", { name: "利用を開始" }).click();
   };
   await authorize(host, "/");
+  await host.getByLabel("定員").selectOption("50");
   await host.getByRole("button", { name: "ルームを作る", exact: true }).click();
   const roomCode = (await host.locator(".room-code").innerText()).trim();
   await authorize(guest, `/?room=${roomCode}`);

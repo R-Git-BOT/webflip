@@ -9,6 +9,29 @@ class FakeStore {
   async put(value: unknown) { this.value = structuredClone(value); }
 }
 
+it.each([10, 15, 20, 25, 30, 35, 40, 45, 50])("allows capacity %i through the room creation API", async capacity => {
+  const response = await createRoomApi(new FakeStore()).fetch(new Request("https://ABC234/api/rooms", {
+    method: "POST", body: JSON.stringify({ capacity, answerSeconds: 60, scoreMode: "none" })
+  }));
+  expect(response.status).toBe(201);
+  expect(await response.json()).toMatchObject({ snapshot: { room: { settings: { capacity } } } });
+});
+
+it("admits fifty participants, rejects the fifty-first and includes all fifty answers", async () => {
+  const api = createRoomApi(new FakeStore());
+  const call = (path: string, body: unknown, cookie = "") => api.fetch(new Request(`https://ABC234${path}`, { method: "POST", headers: { cookie }, body: JSON.stringify(body) }));
+  const created = await call("/api/rooms", { capacity: 50, answerSeconds: 60, scoreMode: "none" });
+  const host = created.headers.get("set-cookie")!.split(";")[0]!;
+  const joined = await Promise.all(Array.from({ length: 51 }, (_, i) => call("/api/rooms/ABC234/join", { name: `参加者${i + 1}` })));
+  expect(joined.filter(response => response.ok)).toHaveLength(50);
+  expect(await joined[50]!.json()).toEqual({ error: "room_full" });
+  await call("/api/command", { type: "round.start", prompt: "50人で回答", answerSeconds: 60, revealNamesDuringJudging: true }, host);
+  const submitted = await call("/api/command", { type: "round.close" }, host);
+  const result = await submitted.json() as { snapshot: { room: { phase: string; round: { answers: unknown[] } } } };
+  expect(result.snapshot.room.phase).toBe("judging");
+  expect(result.snapshot.room.round.answers).toHaveLength(50);
+});
+
 it("returns a controlled unavailable response when stored room data cannot be loaded", async () => {
   const api = createRoomApi({ async get() { throw Error("R2 unavailable"); }, async put() {} });
   const response = await api.fetch(new Request("https://ABC234/api/session"));

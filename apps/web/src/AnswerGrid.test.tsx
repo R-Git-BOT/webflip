@@ -56,4 +56,7 @@ describe("AnswerGrid", () => {
     expect(getAnswerGridDimensions(6)).toEqual({ columns: 3, rows: 2 });
     expect(getAnswerGridDimensions(15)).toEqual({ columns: 5, rows: 3 });
   });
+  it("keeps fifty answers within five rows on desktop", () => {
+    expect(getAnswerGridDimensions(50)).toEqual({ columns: 10, rows: 5 });
+  });
 });

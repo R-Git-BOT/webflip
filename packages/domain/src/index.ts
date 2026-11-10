@@ -1,4 +1,6 @@
 export type ScoreMode = "none" | "correct-count";
+export const ROOM_CAPACITIES = [10, 15, 20, 25, 30, 35, 40, 45, 50] as const;
+export const isRoomCapacity = (value: number): boolean => ROOM_CAPACITIES.some(capacity => capacity === value);
 
 export type RoomSettings = {
   capacity: number;
@@ -168,6 +170,7 @@ function closeRound(state: RoomState) {
 }
 
 export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomState): RoomEngine {
+  if (!restoredState && !isRoomCapacity(input.capacity)) throw new Error("invalid_settings");
   const state: RoomState = restoredState ? structuredClone(restoredState) : {
     roomId: input.roomId,
     lastActivityAt: Date.now(),

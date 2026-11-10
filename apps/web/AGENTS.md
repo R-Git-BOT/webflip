@@ -16,7 +16,7 @@ When implementing from a selected generated mock, treat that image as the source
 - During active quiz scenes, use a fullscreen broadcast-game composition inspired by Lounge's clarity without copying its branding or assets.
 - Keep active quiz scenes within `100dvh` whenever practical; headers, prompts, canvases, answer grids, and primary actions must remain visible without page scrolling.
 - Result and judging answer frames use solid blue for unselected/incorrect answers and solid red for selected/correct answers. Do not add a visible correct label; expose correctness to assistive technology.
-- Preserve the 4:3 drawing surface while allowing the surrounding chrome and the 1–15 answer grid to scale with the browser viewport.
+- Preserve the 4:3 drawing surface while allowing the surrounding chrome and the 1–50 answer grid to scale with the browser viewport. Room capacity choices are 10–50 participants in steps of five; the host does not count toward capacity.
 - The answer surface is solid blue and the fixed MVP pen is white. Keep Undo, Redo, and Clear only; do not add color pickers, pen widths, shapes, or text tools.
 - In judging and results, the whole flip surface is blue by default and switches to red when selected as a correct answer; do not leave a white inner drawing panel.
 - In judging and results, surround each drawing surface with a black frame and reserve a thicker black bottom band for the participant name so handwriting never competes with the label.
