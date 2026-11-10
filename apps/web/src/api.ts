@@ -77,14 +77,15 @@ export function subscribeToRoom(
     if (stopped) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${protocol}//${window.location.host}/ws?connection=${connectionId}`);
-    socket.addEventListener("open", () => { retryDelay = 500; onConnectionChange(true); });
+    socket.addEventListener("open", () => { if (stopped) return; retryDelay = 500; onConnectionChange(true); });
     socket.addEventListener("message", (event) => {
+      if (stopped) return;
       const message = JSON.parse(String(event.data)) as { type: string; snapshot?: Snapshot };
       if (message.type === "snapshot" && message.snapshot) onSnapshot(message.snapshot);
     });
     socket.addEventListener("close", (event) => {
-      onConnectionChange(false);
       if (stopped) return;
+      onConnectionChange(false);
       if (event.code === 4001 || event.code === 4008) {
         stopped = true;
         onSessionLost();
@@ -110,6 +111,7 @@ export function subscribeToRoom(
   connect();
   return () => {
     stopped = true;
+    onConnectionChange(false);
     if (retryTimer !== null) window.clearTimeout(retryTimer);
     socket?.close();
   };

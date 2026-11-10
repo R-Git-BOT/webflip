@@ -89,7 +89,8 @@ export class RoomDurableObject {
         return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
       }
       const path = new URL(request.url).pathname;
-      if (path === "/api/command" || path === "/api/leave") {
+      const endedLeave = path === "/api/leave" && (await this.store.get() as PersistedRoomService | undefined)?.rooms[0]?.[1].phase === "ended";
+      if (path === "/api/command" || (path === "/api/leave" && !endedLeave)) {
         const cookie = request.headers.get("cookie") ?? "";
         const id = request.headers.get("x-wf-connection");
         if (!this.state.getWebSockets().some(socket => {

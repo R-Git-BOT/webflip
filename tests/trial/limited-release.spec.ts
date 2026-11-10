@@ -32,6 +32,16 @@ test("requires trial access, saves a PNG answer and rejects refresh bursts", asy
   host.once("dialog", dialog => dialog.accept());
   await host.getByRole("button", { name: "ルームを終了" }).click();
   await expect(host.getByRole("heading", { name: "ルームは終了しました" })).toBeVisible();
+  await host.reload();
+  await expect(host.getByRole("heading", { name: "ルームは終了しました" })).toBeVisible();
+  await host.getByRole("button", { name: "新しいルームを作る", exact: true }).click();
+  await expect(host.getByRole("heading", { name: "手書きクイズ" })).toBeVisible();
+  await host.getByRole("button", { name: "ルームを作る", exact: true }).click();
+  await expect(host.locator(".room-code")).toBeVisible();
+  expect((await host.locator(".room-code").innerText()).trim()).not.toBe(roomCode);
+  host.once("dialog", dialog => dialog.accept());
+  await host.getByRole("button", { name: "ルームを終了", exact: true }).click();
+  await expect(host.getByRole("heading", { name: "ルームは終了しました" })).toBeVisible();
   const rejectedCode = await guest.evaluate(() => new Promise<number>(resolve => {
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${location.host}/ws?connection=${crypto.randomUUID()}`);

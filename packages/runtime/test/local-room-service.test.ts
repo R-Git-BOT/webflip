@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { createLocalRoomService } from "../src/index";
 
 describe("LocalRoomService", () => {
+  it("lets the host detach from an ended room without removing other participants' ended screens", () => {
+    const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
+    const host = service.createRoom({ capacity: 10, answerSeconds: 60, scoreMode: "none" });
+    const guest = service.joinRoom({ roomCode: "ABC234", name: "参加者" });
+    expect(() => service.leaveRoom(host.sessionId)).toThrow("participant_required");
+    service.dispatch(host.sessionId, { type: "room.end" });
+    expect(service.leaveRoom(host.sessionId)).toEqual({ roomCode: "ABC234" });
+    expect(() => service.getSnapshot(host.sessionId)).toThrow("session_not_found");
+    expect(service.getSnapshot(guest.sessionId).room.phase).toBe("ended");
+  });
   it("removes every disconnected answer before a bulk removal closes reception", () => {
     const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
     const host = service.createRoom({ capacity: 50, answerSeconds: 60, scoreMode: "none" });

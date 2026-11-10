@@ -155,9 +155,13 @@ export function createLocalRoomService(
     leaveRoom(sessionId) {
       const session = sessions.get(sessionId);
       if (!session) throw new Error("session_not_found");
-      if (session.role !== "participant") throw new Error("participant_required");
       const room = rooms.get(session.roomCode);
       if (!room) throw new Error("room_not_found");
+      if (room.getState().phase === "ended") {
+        sessions.delete(sessionId);
+        return { roomCode: session.roomCode };
+      }
+      if (session.role !== "participant") throw new Error("participant_required");
       room.dispatch({ type: "participant.exit", participantId: session.participantId });
       sessions.delete(sessionId);
       return { roomCode: session.roomCode };

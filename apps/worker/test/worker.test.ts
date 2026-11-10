@@ -9,6 +9,19 @@ class FakeStore {
   async put(value: unknown) { this.value = structuredClone(value); }
 }
 
+it("clears both room cookies when the host returns from an ended room", async () => {
+  const api = createRoomApi(new FakeStore());
+  const post = (path: string, body: unknown, cookie = "") => api.fetch(new Request(`https://ABC234${path}`, { method: "POST", headers: { cookie }, body: JSON.stringify(body) }));
+  const created = await post("/api/rooms", { capacity: 10, answerSeconds: 60, scoreMode: "none" });
+  const cookie = created.headers.get("set-cookie")!.split(";")[0]!;
+  await post("/api/command", { type: "room.end" }, cookie);
+  const response = await post("/api/leave", {}, cookie);
+  expect(response.status).toBe(200);
+  expect(response.headers.getSetCookie()).toEqual(expect.arrayContaining([
+    expect.stringMatching(/^wf_session=;.*Max-Age=0/), expect.stringMatching(/^wf_room=;.*Max-Age=0/)
+  ]));
+});
+
 it("removes disconnected sessions using live connection presence rather than an outdated roster flag", async () => {
   const connected = new Set<string>();
   const api = createRoomApi(new FakeStore(), { isSessionConnected: id => connected.has(id) });

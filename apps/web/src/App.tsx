@@ -379,7 +379,7 @@ function ResultsScreen({ snapshot, send, onLeave }: { snapshot: Snapshot; send(c
   );
 }
 
-function ScreenRouter({ snapshot, send, onOpenRound, onLeave, connected }: { snapshot: Snapshot; send(command: ClientCommand): void; onOpenRound(): void; onLeave(): void; connected: boolean }) {
+function ScreenRouter({ snapshot, send, onOpenRound, onLeave, onReturnToStart, connected, busy }: { snapshot: Snapshot; send(command: ClientCommand): void; onOpenRound(): void; onLeave(): void; onReturnToStart(): void; connected: boolean; busy: boolean }) {
   const { room } = snapshot;
   if (room.phase !== "ended" && room.storagePausedAt !== undefined) return <main className="loading-screen"><h1>保存機能の復旧を待っています</h1><p>進行と描画を一時停止しています。</p></main>;
   if (room.phase !== "ended" && room.hostDisconnectedAt !== undefined) {
@@ -413,7 +413,7 @@ function ScreenRouter({ snapshot, send, onOpenRound, onLeave, connected }: { sna
     return <ParticipantWaitingScreen room={room} participantId={snapshot.participantId ?? ""} onLeave={onLeave} />;
   }
   if (room.phase === "ended") {
-    return <main className="loading-screen"><div className="wordmark">WebFlipper</div><h1>ルームは終了しました</h1></main>;
+    return <main className="loading-screen"><div className="wordmark">WebFlipper</div><h1>ルームは終了しました</h1><button className="button button--primary" type="button" disabled={busy} onClick={onReturnToStart}>{snapshot.role === "host" ? "新しいルームを作る" : "トップへ戻る"}</button></main>;
   }
   if (room.phase === "answering") return snapshot.role === "host" ? <HostAnsweringScreen room={room} onClose={() => {
     if (window.confirm("未確定のCanvasも現在の内容で提出します。回答受付を終了しますか？")) send({ type: "round.close" });
@@ -508,6 +508,17 @@ export function App() {
     }
   }
 
+  async function returnToStart() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.leaveRoom();
+      window.location.assign("/");
+    } catch (caught) {
+      setError(messageFor(caught));
+    } finally { setBusy(false); }
+  }
+
   if (loading) return <main className="loading-screen"><div className="wordmark">WebFlipper</div><p>読み込んでいます</p></main>;
   if (!snapshot) {
     return (
@@ -525,7 +536,7 @@ export function App() {
 
   return (
     <>
-      <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} connected={connected} />
+      <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} onReturnToStart={() => void returnToStart()} connected={connected} busy={busy} />
       {roundDialogOpen ? (
         <RoundDialog
           defaultSeconds={snapshot.room.settings.answerSeconds}

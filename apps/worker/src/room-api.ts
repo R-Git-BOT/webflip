@@ -23,7 +23,7 @@ export function createRoomApi(store: RoomStore, options: { requirePng?: boolean;
       nextId: () => crypto.randomUUID(),
       nextRoomCode: () => url.hostname.toUpperCase()
     }, persisted);
-    const sessionCookie = (id: string) => ({ "set-cookie": `wf_session=${id}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=7200` });
+    const sessionCookie = (id: string) => ({ "set-cookie": `wf_session=${id}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${id ? 7200 : 0}` });
     try {
       let response: Response;
       const expired = service.expireDueRounds(Date.now()).length > 0;
@@ -113,6 +113,7 @@ export function createRoomApi(store: RoomStore, options: { requirePng?: boolean;
         if (!cookie) return json({ error: "session_not_found" }, 401);
         service.leaveRoom(cookie);
         response = json({ snapshot: null }, 200, sessionCookie(""));
+        response.headers.append("set-cookie", "wf_room=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
       } else return json({ error: "not_found" }, 404);
       if (request.method !== "GET" || expired || presenceChanged) {
         const next = service.exportState();
