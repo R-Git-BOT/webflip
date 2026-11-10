@@ -1,0 +1,22 @@
+{
+  "name": "webflipper",
+  "private": true,
+  "packageManager": "pnpm@11.1.1",
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c yellow,blue \"pnpm --filter @webflipper/local-server dev\" \"pnpm --filter @webflipper/web dev\"",
+    "dummy:host": "pnpm --filter @webflipper/local-server dummy:host",
+    "dummy:participant": "pnpm --filter @webflipper/local-server dummy:participant",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1",
+    "@types/node": "^24.6.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
