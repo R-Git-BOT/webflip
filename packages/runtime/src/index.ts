@@ -29,7 +29,7 @@ export type LocalRoomService = {
     answerSeconds: number;
     scoreMode: ScoreMode;
   }): { roomCode: string; sessionId: string };
-  joinRoom(input: { roomCode: string; name: string }): { sessionId: string };
+  joinRoom(input: { roomCode: string; name: string; previousSessionId?: string }): { sessionId: string };
   leaveRoom(sessionId: string): { roomCode: string };
   getSnapshot(sessionId: string): RoomSnapshot;
   dispatch(sessionId: string, command: LocalCommand): { ok: true };
@@ -37,12 +37,15 @@ export type LocalRoomService = {
 };
 
 export type PersistedRoomService = {
+  blockedSessions?: Record<string, string>;
   receipts?: Record<string, { sessionId: string; fingerprint: string }>;
   rooms: [string, RoomState][];
   sessions: [string, Session][];
 };
 
 export type LocalCommand =
+  | { type: "participants.removeDisconnected" }
+  | { type: "participant.remove"; participantId: string }
   | {
       type: "round.start";
       prompt: string;
@@ -98,6 +101,7 @@ export function createLocalRoomService(
   const rooms = new Map<string, RoomEngine>();
   const sessions = new Map<string, Session>();
   const receipts = structuredClone(persisted?.receipts ?? {});
+  const blockedSessions = structuredClone(persisted?.blockedSessions ?? {});
   for (const [code, state] of persisted?.rooms ?? []) {
     rooms.set(code, createRoomEngine({ ...state.settings, roomId: state.roomId, roomCode: code, hostId: state.hostId }, state));
   }
@@ -115,7 +119,8 @@ export function createLocalRoomService(
       room.dispatch(session.role === "host" ? { type: "host.connection", connected, now } : { type: "participant.connection", participantId: session.participantId, connected });
     },
     exportState() {
-      return structuredClone({ rooms: [...rooms].map(([code, engine]) => [code, engine.getState()] as [string, RoomState]), sessions: [...sessions], receipts });
+      for (const [id, code] of Object.entries(blockedSessions)) if (!rooms.has(code) || rooms.get(code)!.getState().phase === "ended") delete blockedSessions[id];
+      return structuredClone({ rooms: [...rooms].map(([code, engine]) => [code, engine.getState()] as [string, RoomState]), sessions: [...sessions], receipts, blockedSessions });
     },
     createRoom(settings) {
       const roomId = dependencies.nextId();
@@ -130,6 +135,7 @@ export function createLocalRoomService(
       return { roomCode, sessionId };
     },
     joinRoom(input) {
+      if (input.previousSessionId && blockedSessions[input.previousSessionId] === input.roomCode) throw new Error("participant_excluded");
       const room = rooms.get(input.roomCode);
       if (!room) throw new Error("room_not_found");
       const participantId = dependencies.nextId();
@@ -174,6 +180,28 @@ export function createLocalRoomService(
       if (!session) throw new Error("session_not_found");
       const room = rooms.get(session.roomCode);
       if (!room) throw new Error("room_not_found");
+
+      if (command.type === "participants.removeDisconnected") {
+        if (session.role !== "host") throw new Error("host_required");
+        const state = room.getState();
+        const confirmed = new Set(state.round?.answers.filter(answer => answer.confirmed).map(answer => answer.participantId));
+        // Keep pending targets until last so reception cannot close halfway through the batch.
+        const targets = state.participants.filter(p => !p.connected && !p.left).map(p => p.id)
+          .sort((a, b) => Number(confirmed.has(b)) - Number(confirmed.has(a)));
+        for (const participantId of targets) this.dispatch(sessionId, { type: "participant.remove", participantId });
+        return { ok: true };
+      }
+
+      if (command.type === "participant.remove") {
+        if (session.role !== "host") throw new Error("host_required");
+        if (!room.getState().participants.some(p => p.id === command.participantId && !p.left)) throw new Error("participant_not_found");
+        const result = room.dispatch({ type: "participant.exit", participantId: command.participantId });
+        for (const [id, target] of sessions) if (target.role === "participant" && target.roomCode === session.roomCode && target.participantId === command.participantId) {
+          blockedSessions[id] = session.roomCode;
+          sessions.delete(id);
+        }
+        return result;
+      }
 
       if (command.type === "round.start") {
         if (session.role !== "host") throw new Error("host_required");

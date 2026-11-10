@@ -8,6 +8,8 @@ export type Snapshot = {
 };
 
 export type ClientCommand =
+  | { type: "participants.removeDisconnected" }
+  | { type: "participant.remove"; participantId: string }
   | { type: "round.start"; prompt: string; answerSeconds: number; revealNamesDuringJudging: boolean; startedAt?: number }
   | { type: "draft.save"; drawing: { operations: unknown[] } }
   | { type: "answer.confirm"; drawing: { operations: unknown[] } }

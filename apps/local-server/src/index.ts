@@ -109,7 +109,8 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request);
       const joined = roomService.joinRoom({
         roomCode: joinMatch[1] ?? "",
-        name: String(body.name ?? "").trim()
+        name: String(body.name ?? "").trim(),
+        ...(sessionIdOf(request) ? { previousSessionId: sessionIdOf(request)! } : {})
       });
       setSessionCookie(response, joined.sessionId);
       const snapshot = roomService.getSnapshot(joined.sessionId);

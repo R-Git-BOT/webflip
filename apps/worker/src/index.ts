@@ -40,7 +40,11 @@ export class RoomDurableObject {
         else await state.storage.put("room", value);
       }
     }, bucket);
-    this.api = createRoomApi(this.store, { requirePng: env.TRIAL_MODE !== "off" });
+    this.api = createRoomApi(this.store, {
+      requirePng: env.TRIAL_MODE !== "off",
+      isSessionConnected: id => state.getWebSockets().some(socket => socket.readyState === 1 &&
+        ((socket.deserializeAttachment() as { cookie?: string }).cookie ?? "").match(/(?:^|;\s*)wf_session=([^;]+)/)?.[1] === id)
+    });
     this.recovery = createStorageRecovery({
       get: () => state.storage.get("storage-health"),
       put: async value => { if (value === undefined) await state.storage.delete("storage-health"); else await state.storage.put("storage-health", value); }

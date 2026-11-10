@@ -392,6 +392,13 @@ function ScreenRouter({ snapshot, send, onOpenRound, onLeave, connected }: { sna
           roomCode={room.roomCode}
           participants={room.participants}
           capacity={room.settings.capacity}
+          onRemove={participantId => {
+            const name = room.participants.find(p => p.id === participantId)?.name ?? "参加者";
+            if (window.confirm(`${name}をルームから除外しますか？`)) send({ type: "participant.remove", participantId });
+          }}
+          onRemoveDisconnected={() => {
+            if (window.confirm("現在切断している参加者を全員除外しますか？")) send({ type: "participants.removeDisconnected" });
+          }}
           answerSeconds={room.settings.answerSeconds}
           scoreMode={room.settings.scoreMode}
           onStart={onOpenRound}
@@ -420,6 +427,7 @@ function messageFor(error: unknown) {
   const messages: Record<string, string> = {
     room_not_found: "ルームが見つかりません。コードを確認してください。",
     session_not_found: "セッションが見つかりません。もう一度参加してください。",
+    participant_excluded: "このルームから除外されたため、再参加できません。",
     rate_limited: "操作が続いています。1分ほど待ってからお試しください。",
     daily_limit: "本日の試用上限に達しました。時間をおいてご利用ください。",
     trial_room_busy: "現在ほかのルームで試用中です。ルームの終了後にお試しください。",

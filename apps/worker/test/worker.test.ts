@@ -9,6 +9,34 @@ class FakeStore {
   async put(value: unknown) { this.value = structuredClone(value); }
 }
 
+it("removes disconnected sessions using live connection presence rather than an outdated roster flag", async () => {
+  const connected = new Set<string>();
+  const api = createRoomApi(new FakeStore(), { isSessionConnected: id => connected.has(id) });
+  const call = (path: string, body: unknown, cookie = "") => api.fetch(new Request(`https://ABC234${path}`, { method: "POST", headers: { cookie }, body: JSON.stringify(body) }));
+  const host = (await call("/api/rooms", { capacity: 50, answerSeconds: 60, scoreMode: "none" })).headers.get("set-cookie")!.split(";")[0]!;
+  const active = (await call("/api/rooms/ABC234/join", { name: "接続中" })).headers.get("set-cookie")!.split(";")[0]!;
+  await call("/api/rooms/ABC234/join", { name: "接続できなかった人" });
+  connected.add(active.split("=")[1]!);
+  const response = await call("/api/command", { type: "participants.removeDisconnected" }, host);
+  expect(response.status).toBe(200);
+  const value = await response.json() as { snapshot: { room: { participants: { name: string }[] } } };
+  expect(value.snapshot.room.participants.map(p => p.name)).toEqual(["接続中"]);
+});
+
+it("corrects stale participant presence when the host refreshes the room", async () => {
+  const connected = new Set<string>();
+  const api = createRoomApi(new FakeStore(), { isSessionConnected: id => connected.has(id) });
+  const post = (path: string, body: unknown) => api.fetch(new Request(`https://ABC234${path}`, { method: "POST", body: JSON.stringify(body) }));
+  const created = await post("/api/rooms", { capacity: 50, answerSeconds: 60, scoreMode: "none" });
+  const cookie = created.headers.get("set-cookie")!.split(";")[0]!;
+  const joined = await post("/api/rooms/ABC234/join", { name: "再接続した人" });
+  connected.add(joined.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!);
+  await post("/api/rooms/ABC234/join", { name: "接続できなかった人" });
+  const response = await api.fetch(new Request("https://ABC234/api/session", { headers: { cookie } }));
+  const data = await response.json() as { snapshot: { room: { participants: { name: string; connected: boolean }[] } } };
+  expect(data.snapshot.room.participants).toMatchObject([{ name: "再接続した人", connected: true }, { name: "接続できなかった人", connected: false }]);
+});
+
 it.each([10, 15, 20, 25, 30, 35, 40, 45, 50])("allows capacity %i through the room creation API", async capacity => {
   const response = await createRoomApi(new FakeStore()).fetch(new Request("https://ABC234/api/rooms", {
     method: "POST", body: JSON.stringify({ capacity, answerSeconds: 60, scoreMode: "none" })

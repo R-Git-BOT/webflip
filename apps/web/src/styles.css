@@ -307,13 +307,89 @@ body:has(.qr-modal[open]) {
   border-bottom: 1px solid var(--muted);
 }
 
+.screen-shell--host-waiting .participant-list {
+  max-height: min(45dvh, 480px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+.remove-disconnected {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+@media (min-width: 1025px) {
+  .screen-shell--host-waiting .waiting-layout {
+    align-items: start;
+  }
+
+  .screen-shell--host-waiting .room-hero {
+    position: sticky;
+    top: 48px;
+    min-height: 0;
+    max-height: calc(100dvh - 96px);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding: clamp(20px, 4dvh, 40px) clamp(24px, 3vw, 48px);
+  }
+
+  .screen-shell--host-waiting .wordmark {
+    font-size: clamp(28px, 4dvh, 48px);
+  }
+
+  .screen-shell--host-waiting .room-hero__rule {
+    margin: clamp(16px, calc(8dvh - 40px), 64px) 0 clamp(12px, 2dvh, 24px);
+  }
+
+  .screen-shell--host-waiting .room-hero__label {
+    font-size: clamp(18px, 2.4dvh, 24px);
+  }
+
+  .screen-shell--host-waiting .room-code {
+    margin: 12px 0 clamp(16px, 3dvh, 28px);
+    font-size: clamp(48px, min(8vw, 10dvh), 112px);
+  }
+
+  .screen-shell--host-waiting .room-share-actions .button {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+
+  .screen-shell--host-waiting .join-url {
+    margin-top: 16px;
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  .screen-shell--host-waiting .join-qr {
+    margin-top: 16px;
+  }
+
+  .screen-shell--host-waiting .join-qr__expand svg {
+    width: clamp(100px, 18dvh, 144px);
+    height: auto;
+  }
+}
+
 .participant-row {
   min-height: 72px;
   display: grid;
-  grid-template-columns: 52px 1fr 16px;
+  grid-template-columns: 52px minmax(0, 1fr) 16px auto;
   align-items: center;
   gap: 16px;
   border-top: 1px solid var(--line);
+}
+
+.participant-remove {
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
 }
 
 .participant-row:first-child {

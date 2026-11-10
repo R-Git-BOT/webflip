@@ -2,6 +2,50 @@ import { describe, expect, it } from "vitest";
 import { createLocalRoomService } from "../src/index";
 
 describe("LocalRoomService", () => {
+  it("removes every disconnected answer before a bulk removal closes reception", () => {
+    const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
+    const host = service.createRoom({ capacity: 50, answerSeconds: 60, scoreMode: "none" });
+    const online = service.joinRoom({ roomCode: "ABC234", name: "接続中" });
+    const pending = service.joinRoom({ roomCode: "ABC234", name: "切断・未確定" });
+    const confirmed = service.joinRoom({ roomCode: "ABC234", name: "切断・確定済み" });
+    const onlineId = service.getSnapshot(online.sessionId).participantId;
+    service.dispatch(host.sessionId, { type: "round.start", prompt: "空", answerSeconds: 60, revealNamesDuringJudging: true });
+    service.dispatch(online.sessionId, { type: "answer.confirm", drawing: { operations: [] } });
+    service.dispatch(confirmed.sessionId, { type: "answer.confirm", drawing: { operations: [] } });
+    service.setConnection(pending.sessionId, false, Date.now());
+    service.setConnection(confirmed.sessionId, false, Date.now());
+    service.dispatch(host.sessionId, { type: "participants.removeDisconnected" });
+    const result = service.getSnapshot(host.sessionId).room;
+    expect(result.phase).toBe("judging");
+    expect(result.round?.answers.map(answer => answer.participantId)).toEqual([onlineId]);
+  });
+  it("lets the host remove disconnected participants in one operation while preserving connected participants", () => {
+    const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
+    const host = service.createRoom({ capacity: 50, answerSeconds: 60, scoreMode: "none" });
+    const online = service.joinRoom({ roomCode: "ABC234", name: "接続中" });
+    const first = service.joinRoom({ roomCode: "ABC234", name: "切断1" });
+    const second = service.joinRoom({ roomCode: "ABC234", name: "切断2" });
+    service.setConnection(first.sessionId, false, Date.now());
+    service.setConnection(second.sessionId, false, Date.now());
+    expect(() => service.dispatch(online.sessionId, { type: "participants.removeDisconnected" })).toThrow("host_required");
+    service.dispatch(host.sessionId, { type: "participants.removeDisconnected" });
+    expect(service.getSnapshot(host.sessionId).room.participants.map(p => p.name)).toEqual(["接続中"]);
+    expect(() => service.getSnapshot(first.sessionId)).toThrow("session_not_found");
+    expect(() => service.getSnapshot(second.sessionId)).toThrow("session_not_found");
+    expect(service.dispatch(host.sessionId, { type: "participants.removeDisconnected" })).toEqual({ ok: true });
+  });
+  it("lets only the host remove a participant and revokes the removed session", () => {
+    const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
+    const host = service.createRoom({ capacity: 50, answerSeconds: 60, scoreMode: "none" });
+    const first = service.joinRoom({ roomCode: "ABC234", name: "ダミー参加者2" });
+    const second = service.joinRoom({ roomCode: "ABC234", name: "別の参加者" });
+    const id = service.getSnapshot(first.sessionId).participantId!;
+    expect(() => service.dispatch(second.sessionId, { type: "participant.remove", participantId: id })).toThrow("host_required");
+    service.dispatch(host.sessionId, { type: "participant.remove", participantId: id });
+    expect(service.getSnapshot(host.sessionId).room.participants.map(p => p.name)).toEqual(["別の参加者"]);
+    expect(() => service.getSnapshot(first.sessionId)).toThrow("session_not_found");
+    expect(() => service.joinRoom({ roomCode: "ABC234", name: "再参加", previousSessionId: first.sessionId })).toThrow("participant_excluded");
+  });
   it("does not grant host authority from public room identifiers", () => {
     let id = 0;
     const service = createLocalRoomService({ nextId: () => `id-${++id}`, nextRoomCode: () => "ABC234" });

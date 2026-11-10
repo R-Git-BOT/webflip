@@ -26,6 +26,8 @@ type HostWaitingScreenProps = {
   scoreMode: "none" | "correct-count";
   onStart(): void;
   onEnd(): void;
+  onRemove?(participantId: string): void;
+  onRemoveDisconnected?(): void;
 };
 
 const AVATAR_COLORS = ["#dd4b55", "#2056d7", "#d38a10", "#7046b5"];
@@ -47,7 +49,9 @@ export function HostWaitingScreen({
   answerSeconds,
   scoreMode,
   onStart,
-  onEnd
+  onEnd,
+  onRemove,
+  onRemoveDisconnected
 }: HostWaitingScreenProps) {
   const joinUrl =
     typeof window === "undefined"
@@ -55,7 +59,7 @@ export function HostWaitingScreen({
       : `${window.location.origin}/?room=${roomCode}`;
 
   return (
-    <main className="screen-shell">
+    <main className="screen-shell screen-shell--host-waiting">
       <div className="waiting-layout">
         <section className="room-hero" aria-labelledby="room-code-title">
           <div className="wordmark wordmark--inverse">WebFlipper</div>
@@ -89,6 +93,9 @@ export function HostWaitingScreen({
                 <strong>{participants.length}</strong> / {capacity}
               </div>
             </header>
+            {onRemoveDisconnected ? <button className="button button--secondary remove-disconnected" type="button" onClick={onRemoveDisconnected} disabled={!participants.some(participant => !participant.connected)}>
+              切断中の参加者を一括除外（{participants.filter(participant => !participant.connected).length}人）
+            </button> : null}
             <div className="participant-list">
               {participants.map((participant, index) => (
                 <div className="participant-row" key={participant.id}>
@@ -103,6 +110,7 @@ export function HostWaitingScreen({
                     className={`status-dot ${participant.connected ? "" : "status-dot--offline"}`}
                     aria-label={participant.connected ? "接続中" : "切断中"}
                   />
+                  {onRemove ? <button className="participant-remove" type="button" aria-label={`${participant.name}を除外`} onClick={() => onRemove(participant.id)}><Trash size={18} aria-hidden="true" /></button> : null}
                 </div>
               ))}
             </div>

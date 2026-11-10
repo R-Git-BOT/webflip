@@ -10,7 +10,7 @@ export interface RoomStore {
 const json = (value: unknown, status = 200, headers: Record<string, string> = {}) =>
   Response.json(value, { status, headers });
 
-export function createRoomApi(store: RoomStore, options = { requirePng: false }) {
+export function createRoomApi(store: RoomStore, options: { requirePng?: boolean; isSessionConnected?: (id: string) => boolean } = {}) {
   let queue: Promise<unknown> = Promise.resolve();
   async function handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -27,6 +27,19 @@ export function createRoomApi(store: RoomStore, options = { requirePng: false })
     try {
       let response: Response;
       const expired = service.expireDueRounds(Date.now()).length > 0;
+      let presenceChanged = false;
+      const syncPresence = () => {
+        if (!options.isSessionConnected || expired) return;
+        for (const [id, session] of persisted?.sessions ?? []) {
+          if (session.role !== "participant") continue;
+          const participant = persisted?.rooms.find(([code]) => code === session.roomCode)?.[1].participants.find(p => p.id === session.participantId && !p.left);
+          const connected = options.isSessionConnected(id);
+          if (participant && participant.connected !== connected) {
+            service.setConnection(id, connected, Date.now());
+            presenceChanged = true;
+          }
+        }
+      };
       if (request.method === "POST" && url.pathname === "/api/rooms") {
         if (service.exportState().rooms.length) return json({ error: "room_exists" }, 409);
         const input = await request.json() as { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" };
@@ -35,7 +48,8 @@ export function createRoomApi(store: RoomStore, options = { requirePng: false })
         response = json({ roomCode: created.roomCode, snapshot: service.getSnapshot(created.sessionId) }, 201, sessionCookie(created.sessionId));
       } else if (request.method === "POST" && /\/api\/rooms\/[A-Z0-9]{6}\/join$/.test(url.pathname)) {
         const input = await request.json() as { name: string };
-        const joined = service.joinRoom({ roomCode: url.pathname.split("/")[3]!, name: input.name });
+        const joined = service.joinRoom({ roomCode: url.pathname.split("/")[3]!, name: input.name, ...(cookie ? { previousSessionId: cookie } : {}) });
+        if (options.isSessionConnected) service.setConnection(joined.sessionId, false, Date.now());
         response = json({ snapshot: service.getSnapshot(joined.sessionId) }, 200, sessionCookie(joined.sessionId));
       } else if (request.method === "POST" && url.pathname === "/internal/connection") {
         if (!cookie) return json({ error: "session_not_found" }, 401);
@@ -49,6 +63,8 @@ export function createRoomApi(store: RoomStore, options = { requirePng: false })
       } else if (request.method === "POST" && url.pathname === "/internal/alarm") {
         response = json({ ok: true });
       } else if (request.method === "GET" && url.pathname === "/api/session") {
+        if (cookie && persisted?.blockedSessions?.[cookie]) return json({ error: "participant_excluded" }, 403);
+        syncPresence();
         let snapshot = null;
         try { snapshot = cookie ? service.getSnapshot(cookie) : null; } catch { /* Expired and removed sessions return to the entry screen. */ }
         response = json({ snapshot });
@@ -68,12 +84,16 @@ export function createRoomApi(store: RoomStore, options = { requirePng: false })
           return json({ snapshot: service.getSnapshot(cookie) });
         }
         if (command.roundToken !== undefined && command.roundToken !== (service.getSnapshot(cookie).room.round?.startedAt ?? null)) throw new Error("stale_round");
-        if (!command || !["round.start", "draft.save", "answer.confirm", "answer.reopen", "answer.toggleCorrect", "results.publish", "round.next", "round.close", "room.end"].includes(command.type)) throw new Error("invalid_command");
+        if (!command || !["participants.removeDisconnected", "participant.remove", "round.start", "draft.save", "answer.confirm", "answer.reopen", "answer.toggleCorrect", "results.publish", "round.next", "round.close", "room.end"].includes(command.type)) throw new Error("invalid_command");
+        if (command.type === "participants.removeDisconnected" && options.isSessionConnected) {
+          if (service.getSnapshot(cookie).role !== "host") throw new Error("host_required");
+          syncPresence();
+        }
         if (command.type === "round.start") {
           if (typeof command.prompt !== "string" || typeof command.revealNamesDuringJudging !== "boolean") throw new Error("invalid_command");
           command.startedAt = Date.now();
         }
-        if (command.type === "answer.toggleCorrect" && typeof command.participantId !== "string") throw new Error("invalid_command");
+        if ((command.type === "answer.toggleCorrect" || command.type === "participant.remove") && typeof command.participantId !== "string") throw new Error("invalid_command");
         if (command.type === "draft.save" || command.type === "answer.confirm") {
           if (!command.drawing || !Array.isArray(command.drawing.operations) || JSON.stringify(command.drawing).length > 1_000_000) throw new Error("invalid_drawing");
           const drawing = command.drawing as { operations: unknown[]; redoOperations?: unknown[]; pngDataUrl?: string };
@@ -94,7 +114,7 @@ export function createRoomApi(store: RoomStore, options = { requirePng: false })
         service.leaveRoom(cookie);
         response = json({ snapshot: null }, 200, sessionCookie(""));
       } else return json({ error: "not_found" }, 404);
-      if (request.method !== "GET" || expired) {
+      if (request.method !== "GET" || expired || presenceChanged) {
         const next = service.exportState();
         next.receipts = next.rooms.length ? receipts : {};
         try { await store.put(next); } catch { return json({ error: "storage_unavailable" }, 503); }
