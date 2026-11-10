@@ -181,6 +181,74 @@ textarea:focus-visible {
   padding: 4px 0 0;
 }
 
+.join-qr {
+  margin-top: 24px;
+  align-self: flex-start;
+}
+
+.join-qr__expand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--paper);
+  font-size: 14px;
+}
+
+.join-qr__expand svg {
+  display: block;
+  background: #ffffff;
+}
+
+body:has(.qr-modal[open]) {
+  overflow: hidden;
+}
+
+.qr-modal {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 32px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--paper);
+  color: var(--ink);
+  text-align: center;
+  overflow: auto;
+}
+
+.qr-modal::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+
+.qr-modal h2 {
+  margin: 12px 0 20px;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.qr-modal > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+  background: #ffffff;
+}
+
+.qr-modal__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.qr-modal__code {
+  margin: 20px 0 0;
+  font-size: 24px;
+  letter-spacing: 0.08em;
+}
+
 .connection-summary {
   align-self: flex-end;
   min-height: 44px;

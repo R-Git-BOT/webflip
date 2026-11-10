@@ -20,5 +20,6 @@ When implementing from a selected generated mock, treat that image as the source
 - The answer surface is solid blue and the fixed MVP pen is white. Keep Undo, Redo, and Clear only; do not add color pickers, pen widths, shapes, or text tools.
 - In judging and results, the whole flip surface is blue by default and switches to red when selected as a correct answer; do not leave a white inner drawing panel.
 - In judging and results, surround each drawing surface with a black frame and reserve a thicker black bottom band for the participant name so handwriting never competes with the label.
+- Show a real invitation QR code directly below the host's participation URL. Clicking it opens an enlarged, responsive modal; close it with its close button, Escape, or the backdrop, and return focus to the thumbnail. Encode the exact participation URL and generate the QR locally in the browser.
 
 Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts/prepare-sites-build.mjs`, and `tests/sites-worker.test.mjs` intact so the same local prototype can be handed to Sites. Before a Sites handoff, run `npm run build` and `npm run test:sites`; the build must leave `dist/client/index.html`, `dist/server/index.js`, and `dist/.openai/hosting.json`.

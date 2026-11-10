@@ -9,6 +9,7 @@ import {
   Trash,
   UsersThree
 } from "@phosphor-icons/react";
+import { JoinQrCode } from "./JoinQrCode";
 
 type Participant = {
   id: string;
@@ -72,6 +73,7 @@ export function HostWaitingScreen({
             </button>
           </div>
           <div className="join-url" aria-label="参加URL">{joinUrl}</div>
+          <JoinQrCode joinUrl={joinUrl} roomCode={roomCode} />
         </section>
 
         <section className="waiting-panel" aria-label="ルーム管理">
