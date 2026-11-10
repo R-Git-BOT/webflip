@@ -209,9 +209,10 @@ function HostAnsweringScreen({ room, onClose }: { room: RoomState; onClose(): vo
   );
 }
 
-function ParticipantAnsweringScreen({ snapshot, send, onLeave }: { snapshot: Snapshot; send(command: ClientCommand): void; onLeave(): void }) {
+function ParticipantAnsweringScreen({ snapshot, send, onLeave, connected }: { snapshot: Snapshot; send(command: ClientCommand): void; onLeave(): void; connected: boolean }) {
   const round = snapshot.room.round;
   const answer = round?.answers.find((candidate) => candidate.participantId === snapshot.participantId);
+  if (!round?.targetParticipantIds.includes(snapshot.participantId ?? "")) return <main className="loading-screen"><AppHeader roomCode={snapshot.room.roomCode} status="次のラウンドを待っています" onLeave={onLeave} /><h1>次のラウンドから回答できます</h1></main>;
   return (
     <main className="flow-screen flow-screen--game">
       <AppHeader roomCode={snapshot.room.roomCode} status="回答受付中" onLeave={onLeave} />
@@ -220,7 +221,7 @@ function ParticipantAnsweringScreen({ snapshot, send, onLeave }: { snapshot: Sna
         <DrawingBoard
           key={round?.startedAt}
           confirmed={answer?.confirmed ?? false}
-          disabled={false}
+          disabled={!connected}
           initialOperations={(answer?.drawing.operations ?? []) as DrawingOperation[]}
           initialRedoOperations={(answer?.drawing.redoOperations ?? []) as DrawingOperation[]}
           onDraftChange={(drawing) => send({ type: "draft.save", drawing })}
@@ -232,13 +233,33 @@ function ParticipantAnsweringScreen({ snapshot, send, onLeave }: { snapshot: Sna
   );
 }
 
-function CanvasPreview({ operations, correct }: { operations: DrawingOperation[]; correct: boolean }) {
+function CanvasPreview({ operations, correct, pngDataUrl }: { operations: DrawingOperation[]; correct: boolean; pngDataUrl?: string | undefined }) {
   const ref = React.useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const context = ref.current?.getContext("2d");
     if (!context) return;
     context.fillStyle = correct ? "#cf2835" : "#0868d9";
     context.fillRect(0, 0, 1024, 768);
+    if (pngDataUrl) {
+      let cancelled = false;
+      const image = new Image();
+      image.onload = () => {
+        if (cancelled) return;
+        context.drawImage(image, 0, 0, 1024, 768);
+        if (correct) {
+          const pixels = context.getImageData(0, 0, 1024, 768);
+          for (let i = 0; i < pixels.data.length; i += 4) {
+            const ink = Math.max(0, Math.min(1, (pixels.data[i]! - 8) / 247));
+            pixels.data[i] = Math.round(207 + 48 * ink);
+            pixels.data[i + 1] = Math.round(40 + 215 * ink);
+            pixels.data[i + 2] = Math.round(53 + 202 * ink);
+          }
+          context.putImageData(pixels, 0, 0);
+        }
+      };
+      image.src = pngDataUrl;
+      return () => { cancelled = true; };
+    }
     context.strokeStyle = "#ffffff";
     context.lineWidth = 8;
     context.lineCap = "round";
@@ -252,7 +273,7 @@ function CanvasPreview({ operations, correct }: { operations: DrawingOperation[]
         context.stroke();
       }
     }
-  }, [correct, operations]);
+  }, [correct, operations, pngDataUrl]);
   return (
     <canvas
       className="answer-preview"
@@ -309,7 +330,7 @@ export function AnswerGrid({ room, judging, onToggle }: { room: RoomState; judgi
             aria-label={resultLabel}
           >
             <div className="answer-card__surface">
-              <CanvasPreview operations={answer.drawing.operations as DrawingOperation[]} correct={correct} />
+              <CanvasPreview operations={answer.drawing.operations as DrawingOperation[]} correct={correct} pngDataUrl={answer.drawing.pngDataUrl} />
             </div>
             <span className="answer-card__name">{visibleName}</span>
           </button>
@@ -357,8 +378,9 @@ function ResultsScreen({ snapshot, send, onLeave }: { snapshot: Snapshot; send(c
   );
 }
 
-function ScreenRouter({ snapshot, send, onOpenRound, onLeave }: { snapshot: Snapshot; send(command: ClientCommand): void; onOpenRound(): void; onLeave(): void }) {
+function ScreenRouter({ snapshot, send, onOpenRound, onLeave, connected }: { snapshot: Snapshot; send(command: ClientCommand): void; onOpenRound(): void; onLeave(): void; connected: boolean }) {
   const { room } = snapshot;
+  if (room.phase !== "ended" && room.storagePausedAt !== undefined) return <main className="loading-screen"><h1>保存機能の復旧を待っています</h1><p>進行と描画を一時停止しています。</p></main>;
   if (room.phase !== "ended" && room.hostDisconnectedAt !== undefined) {
     return <main className="loading-screen"><h1>ホストの復帰を待っています</h1><p>進行と描画を一時停止しています。</p></main>;
   }
@@ -387,7 +409,7 @@ function ScreenRouter({ snapshot, send, onOpenRound, onLeave }: { snapshot: Snap
   }
   if (room.phase === "answering") return snapshot.role === "host" ? <HostAnsweringScreen room={room} onClose={() => {
     if (window.confirm("未確定のCanvasも現在の内容で提出します。回答受付を終了しますか？")) send({ type: "round.close" });
-  }} /> : <ParticipantAnsweringScreen snapshot={snapshot} send={send} onLeave={onLeave} />;
+  }} /> : <ParticipantAnsweringScreen snapshot={snapshot} send={send} onLeave={onLeave} connected={connected} />;
   if (room.phase === "judging") return <JudgingScreen snapshot={snapshot} send={send} onLeave={onLeave} />;
   return <ResultsScreen snapshot={snapshot} send={send} onLeave={onLeave} />;
 }
@@ -396,7 +418,17 @@ function messageFor(error: unknown) {
   const key = error instanceof Error ? error.message : "unknown_error";
   const messages: Record<string, string> = {
     room_not_found: "ルームが見つかりません。コードを確認してください。",
-    session_not_found: "セッションが見つかりません。もう一度参加してください。"
+    session_not_found: "セッションが見つかりません。もう一度参加してください。",
+    rate_limited: "操作が続いています。1分ほど待ってからお試しください。",
+    daily_limit: "本日の試用上限に達しました。時間をおいてご利用ください。",
+    trial_room_busy: "現在ほかのルームで試用中です。ルームの終了後にお試しください。",
+    trial_unavailable: "ただいま試用を停止しています。",
+    storage_unavailable: "保存機能に接続できません。復旧をお待ちください。",
+    storage_daily_limit: "本日の保存上限に達しました。時間をおいてご利用ください。",
+    connection_required: "接続を確認しています。少し待ってからお試しください。",
+    stale_round: "ラウンドが変わりました。現在の画面で操作し直してください。",
+    invalid_png: "回答画像を保存できませんでした。描画量を減らしてお試しください。",
+    request_too_large: "回答データが大きすぎます。描画量を減らしてください。"
   };
   return messages[key] ?? "操作を完了できませんでした。もう一度お試しください。";
 }
@@ -416,6 +448,10 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [roundDialogOpen, setRoundDialogOpen] = useState(false);
+  const [connected, setConnected] = useState(false);
+  function acceptSnapshot(value: Snapshot) {
+    setSnapshot(current => current && current.room.roomCode === value.room.roomCode && (current.room.revision ?? 0) > (value.room.revision ?? 0) ? current : value);
+  }
   const initialRoomCode = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("room")?.toUpperCase() ?? "";
 
   useEffect(() => {
@@ -427,7 +463,7 @@ export function App() {
 
   useEffect(() => {
     if (!snapshot) return;
-    return subscribeToRoom(setSnapshot, () => setSnapshot(null));
+    return subscribeToRoom(acceptSnapshot, () => setSnapshot(null), setConnected);
   }, [snapshot?.room.roomCode]);
 
   async function run(action: () => Promise<{ snapshot: Snapshot }>) {
@@ -436,7 +472,7 @@ export function App() {
     setNotice(null);
     try {
       const result = await action();
-      setSnapshot(result.snapshot);
+      acceptSnapshot(result.snapshot);
     } catch (caught) {
       setError(messageFor(caught));
     } finally {
@@ -445,7 +481,7 @@ export function App() {
   }
 
   function send(command: ClientCommand) {
-    void run(() => api.command(command));
+    void run(() => api.command(command, snapshot?.room.round?.startedAt ?? null));
   }
 
   async function leaveRoom() {
@@ -480,7 +516,7 @@ export function App() {
 
   return (
     <>
-      <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} />
+      <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} connected={connected} />
       {roundDialogOpen ? (
         <RoundDialog
           defaultSeconds={snapshot.room.settings.answerSeconds}

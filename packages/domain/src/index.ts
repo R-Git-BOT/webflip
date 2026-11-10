@@ -27,6 +27,7 @@ export type RoundState = {
 };
 
 export type DrawingData = {
+  pngDataUrl?: string;
   operations: unknown[];
   redoOperations?: unknown[];
 };
@@ -38,9 +39,12 @@ export type Answer = {
 };
 
 export type RoomState = {
+  revision?: number;
+  createdAt?: number;
   lastActivityAt?: number;
   endedAt?: number;
   hostDisconnectedAt?: number;
+  storagePausedAt?: number;
   pausedRemainingMs?: number;
   roomId: string;
   roomCode: string;
@@ -127,6 +131,7 @@ export type ExitParticipantCommand = {
 };
 
 export type RoomCommand =
+  | { type: "storage.connection"; available: boolean; now: number }
   | { type: "host.connection"; connected: boolean; now: number }
   | { type: "participant.connection"; participantId: string; connected: boolean }
   | JoinParticipantCommand
@@ -166,6 +171,8 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
   const state: RoomState = restoredState ? structuredClone(restoredState) : {
     roomId: input.roomId,
     lastActivityAt: Date.now(),
+    createdAt: Date.now(),
+    revision: 0,
     roomCode: input.roomCode,
     hostId: input.hostId,
     phase: "waiting",
@@ -182,25 +189,44 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
   return {
     getState: () => structuredClone(state),
     dispatch(command) {
+      if (command.type === "storage.connection") {
+        if (state.phase === "ended") return { ok: true };
+        state.revision = (state.revision ?? 0) + 1;
+        if (!command.available && state.storagePausedAt === undefined) {
+          state.storagePausedAt = command.now;
+          if (state.hostDisconnectedAt === undefined && state.phase === "answering" && state.round) state.pausedRemainingMs = Math.max(0, state.round.endsAt - command.now);
+        }
+        if (command.available && state.storagePausedAt !== undefined) {
+          delete state.storagePausedAt;
+          if (state.hostDisconnectedAt === undefined) {
+            if (state.round && state.pausedRemainingMs !== undefined) state.round.endsAt = command.now + state.pausedRemainingMs;
+            delete state.pausedRemainingMs;
+          }
+        }
+        return { ok: true };
+      }
       if (command.type === "host.connection") {
+        state.revision = (state.revision ?? 0) + 1;
         if (state.phase === "ended") return { ok: true };
         if (!command.connected && state.hostDisconnectedAt === undefined) {
           state.hostDisconnectedAt = command.now;
-          if (state.phase === "answering" && state.round) state.pausedRemainingMs = Math.max(0, state.round.endsAt - command.now);
+          if (state.storagePausedAt === undefined && state.phase === "answering" && state.round) state.pausedRemainingMs = Math.max(0, state.round.endsAt - command.now);
         }
         if (command.connected && state.hostDisconnectedAt !== undefined) {
-          if (state.round && state.pausedRemainingMs !== undefined) state.round.endsAt = command.now + state.pausedRemainingMs;
+          if (state.storagePausedAt === undefined && state.round && state.pausedRemainingMs !== undefined) state.round.endsAt = command.now + state.pausedRemainingMs;
           delete state.hostDisconnectedAt;
-          delete state.pausedRemainingMs;
+          if (state.storagePausedAt === undefined) delete state.pausedRemainingMs;
         }
         return { ok: true };
       }
       if (command.type === "participant.connection") {
+        state.revision = (state.revision ?? 0) + 1;
         const participant = state.participants.find(p => p.id === command.participantId && !p.left);
         if (participant) participant.connected = command.connected;
         return { ok: true };
       }
       if (state.hostDisconnectedAt !== undefined && !["participant.exit", "room.end"].includes(command.type)) throw new Error("host_absent");
+      if (state.storagePausedAt !== undefined && !["participant.exit", "room.end"].includes(command.type)) throw new Error("storage_unavailable");
       if (command.type === "participant.join") {
         if (state.phase === "ended") throw new Error("room_ended");
         const name = command.name.trim();
@@ -387,10 +413,12 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
         state.round = null;
         state.endedAt = Date.now();
         delete state.hostDisconnectedAt;
+        delete state.storagePausedAt;
         delete state.pausedRemainingMs;
       }
 
       state.lastActivityAt = Date.now();
+      state.revision = (state.revision ?? 0) + 1;
       return { ok: true };
     }
   };

@@ -12,6 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:worker:e2e": "playwright test --config playwright.worker.config.ts",
+    "test:trial:e2e": "playwright test --config playwright.trial.config.ts",
+    "deploy:trial": "node scripts/prepare-trial-secrets.mjs && pnpm build:worker && pnpm --filter @webflipper/worker exec wrangler deploy --secrets-file .wrangler/trial-secrets.json",
     "build:worker": "pnpm --filter @webflipper/web build && pnpm --filter @webflipper/worker bundle"
   },
   "devDependencies": {

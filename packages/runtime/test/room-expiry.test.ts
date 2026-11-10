@@ -1,6 +1,16 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createLocalRoomService } from "../src/index";
 afterEach(() => vi.useRealTimers());
+it("ends a storage outage after one minute even while the host is disconnected", () => {
+  vi.useFakeTimers(); vi.setSystemTime(1000);
+  const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
+  const host = service.createRoom({ capacity: 10, answerSeconds: 60, scoreMode: "none" });
+  service.setStorageAvailability(false, 1000);
+  service.setConnection(host.sessionId, false, 1000);
+  vi.setSystemTime(61000);
+  service.expireDueRounds(Date.now());
+  expect(service.getSnapshot(host.sessionId).room.phase).toBe("ended");
+});
 it("keeps a disconnected host's room for five minutes, then ends it", () => {
   vi.useFakeTimers(); vi.setSystemTime(1000);
   let id = 0;

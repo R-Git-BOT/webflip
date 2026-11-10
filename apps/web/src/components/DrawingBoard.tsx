@@ -18,9 +18,9 @@ type DrawingBoardProps = {
   disabled: boolean;
   initialOperations?: DrawingOperation[];
   initialRedoOperations?: DrawingOperation[];
-  onConfirm(drawing: { operations: DrawingOperation[]; redoOperations: DrawingOperation[] }): void;
+  onConfirm(drawing: { operations: DrawingOperation[]; redoOperations: DrawingOperation[]; pngDataUrl: string }): void;
   onReopen(): void;
-  onDraftChange?(drawing: { operations: DrawingOperation[]; redoOperations: DrawingOperation[] }): void;
+  onDraftChange?(drawing: { operations: DrawingOperation[]; redoOperations: DrawingOperation[]; pngDataUrl: string }): void;
 };
 
 function drawOperations(context: CanvasRenderingContext2D, operations: DrawingOperation[]) {
@@ -66,6 +66,10 @@ export function DrawingBoard({
   }
 
   const state = historyRef.current.getState();
+  function exportDrawing() {
+    if (!historyRef.current || !canvasRef.current) return null;
+    return { ...historyRef.current.exportState(), pngDataUrl: canvasRef.current.toDataURL("image/png") };
+  }
 
   useEffect(() => {
     const context = canvasRef.current?.getContext("2d");
@@ -75,7 +79,7 @@ export function DrawingBoard({
   useEffect(() => {
     if (!onDraftRef.current || confirmed || disabled || revision === 0) return;
     const timeout = window.setTimeout(() => {
-      const drawing = historyRef.current?.exportState();
+      const drawing = exportDrawing();
       if (drawing) onDraftRef.current?.(drawing);
     }, 1000);
     return () => window.clearTimeout(timeout);
@@ -163,7 +167,7 @@ export function DrawingBoard({
           className="button button--primary answer-action"
           type="button"
           disabled={disabled}
-          onClick={() => { if (historyRef.current) onConfirm(historyRef.current.exportState()); }}
+          onClick={() => { const drawing = exportDrawing(); if (drawing) onConfirm(drawing); }}
         >
           <CheckCircle aria-hidden="true" size={28} />回答を確定
         </button>

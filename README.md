@@ -55,4 +55,4 @@ pnpm dummy:participant -- K7M4PX ダミー太郎
 - `apps/local-server`: Windowsで試せるHTTP/WebSocketサーバー
 - `apps/web`: React/Vite UI
 
-Cloudflare本番Adapterは `apps/worker` で開発中です。実装済み範囲と公開前の残作業は[Worker開発状況](./apps/worker/README.md)を参照してください。Discord OAuth、切断・復帰の全規則は後続スライスで追加します。
+Cloudflare Adapterは `apps/worker` にあります。Workers Freeを使う匿名限定試用の設定・試用コードの扱い・停止方法は[限定公開の運用](./Docs/限定公開の運用.md)、制約と予算は[ADR 0006](./Docs/ADR/0006-limited-free-trial.md)を参照してください。Discord OAuthとGitHubからの自動デプロイは未設定です。

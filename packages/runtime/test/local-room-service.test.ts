@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createLocalRoomService } from "../src/index";
 
 describe("LocalRoomService", () => {
+  it("does not grant host authority from public room identifiers", () => {
+    let id = 0;
+    const service = createLocalRoomService({ nextId: () => `id-${++id}`, nextRoomCode: () => "ABC234" });
+    service.createRoom({ capacity: 10, answerSeconds: 60, scoreMode: "none" });
+    const guest = service.joinRoom({ roomCode: "ABC234", name: "太郎" });
+    const publicRoom = service.getSnapshot(guest.sessionId).room;
+    expect(() => service.dispatch(`host:${publicRoom.hostId}`, { type: "room.end" })).toThrow("session_not_found");
+  });
   it("lets a host and participant observe the same in-memory room", () => {
     const service = createLocalRoomService({
       nextId: (() => {

@@ -21,6 +21,7 @@ export type RoomSnapshot = {
 };
 
 export type LocalRoomService = {
+  setStorageAvailability(available: boolean, now: number): void;
   setConnection(sessionId: string, connected: boolean, now: number): void;
   exportState(): PersistedRoomService;
   createRoom(settings: {
@@ -36,6 +37,7 @@ export type LocalRoomService = {
 };
 
 export type PersistedRoomService = {
+  receipts?: Record<string, { sessionId: string; fingerprint: string }>;
   rooms: [string, RoomState][];
   sessions: [string, Session][];
 };
@@ -95,12 +97,16 @@ export function createLocalRoomService(
 ): LocalRoomService {
   const rooms = new Map<string, RoomEngine>();
   const sessions = new Map<string, Session>();
+  const receipts = structuredClone(persisted?.receipts ?? {});
   for (const [code, state] of persisted?.rooms ?? []) {
     rooms.set(code, createRoomEngine({ ...state.settings, roomId: state.roomId, roomCode: code, hostId: state.hostId }, state));
   }
   for (const [id, session] of persisted?.sessions ?? []) sessions.set(id, session);
 
   return {
+    setStorageAvailability(available, now) {
+      for (const room of rooms.values()) room.dispatch({ type: "storage.connection", available, now });
+    },
     setConnection(sessionId, connected, now) {
       const session = sessions.get(sessionId);
       if (!session) throw new Error("session_not_found");
@@ -109,13 +115,13 @@ export function createLocalRoomService(
       room.dispatch(session.role === "host" ? { type: "host.connection", connected, now } : { type: "participant.connection", participantId: session.participantId, connected });
     },
     exportState() {
-      return structuredClone({ rooms: [...rooms].map(([code, engine]) => [code, engine.getState()] as [string, RoomState]), sessions: [...sessions] });
+      return structuredClone({ rooms: [...rooms].map(([code, engine]) => [code, engine.getState()] as [string, RoomState]), sessions: [...sessions], receipts });
     },
     createRoom(settings) {
       const roomId = dependencies.nextId();
       const hostId = dependencies.nextId();
       const roomCode = dependencies.nextRoomCode();
-      const sessionId = `host:${hostId}`;
+      const sessionId = crypto.randomUUID();
       rooms.set(
         roomCode,
         createRoomEngine({ roomId, roomCode, hostId, ...settings })
@@ -127,7 +133,7 @@ export function createLocalRoomService(
       const room = rooms.get(input.roomCode);
       if (!room) throw new Error("room_not_found");
       const participantId = dependencies.nextId();
-      const sessionId = `participant:${participantId}`;
+      const sessionId = crypto.randomUUID();
       room.dispatch({
         type: "participant.join",
         participantId,
@@ -206,14 +212,14 @@ export function createLocalRoomService(
           }
           continue;
         }
-        if (state.hostDisconnectedAt !== undefined) {
-          if (now >= state.hostDisconnectedAt + 300_000) {
+        if (state.hostDisconnectedAt !== undefined || state.storagePausedAt !== undefined) {
+          if ((state.hostDisconnectedAt !== undefined && now >= state.hostDisconnectedAt + 300_000) || (state.storagePausedAt !== undefined && now >= state.storagePausedAt + 60000)) {
             room.dispatch({ type: "room.end", hostId: state.hostId });
             expiredRoomCodes.push(roomCode);
           }
           continue;
         }
-        if (state.lastActivityAt !== undefined && now >= state.lastActivityAt + 7_200_000) {
+        if ((state.lastActivityAt !== undefined && now >= state.lastActivityAt + 7_200_000) || (state.createdAt !== undefined && now >= state.createdAt + 7_200_000)) {
           room.dispatch({ type: "room.end", hostId: state.hostId });
           expiredRoomCodes.push(roomCode);
           continue;

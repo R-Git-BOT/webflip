@@ -1,10 +1,18 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "webflipper",
+  "account_id": "85519663611ed37ff4d007fe0996f41d",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "../web/dist/client", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/ws"] },
-  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "RoomDurableObject" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomDurableObject"] }],
+  "vars": { "TRIAL_MODE": "on" },
+  "secrets": { "required": ["TRIAL_CODE"] },
+  "observability": { "enabled": true, "logs": { "enabled": true, "head_sampling_rate": 0.01, "invocation_logs": false }, "traces": { "enabled": true, "head_sampling_rate": 0.001 } },
+  "assets": { "directory": "../web/dist/client", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/ws", "/trial", "/trial/*"] },
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "RoomDurableObject" }, { "name": "TRIAL_GATE", "class_name": "TrialGateDurableObject" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomDurableObject"] }, { "tag": "v2", "new_sqlite_classes": ["TrialGateDurableObject"] }],
+  "ratelimits": [
+    { "name": "REQUEST_LIMITER", "namespace_id": "42017", "simple": { "limit": 1200, "period": 60 } },
+    { "name": "LOGIN_LIMITER", "namespace_id": "42018", "simple": { "limit": 5, "period": 60 } }
+  ],
   "r2_buckets": [{ "binding": "CANVAS", "bucket_name": "webflipper-canvas" }]
 }

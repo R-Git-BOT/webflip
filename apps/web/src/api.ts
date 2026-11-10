@@ -1,4 +1,5 @@
 import type { RoomState } from "@webflipper/domain";
+const connectionId = typeof window === "undefined" ? "server" : crypto.randomUUID();
 
 export type Snapshot = {
   role: "host" | "participant";
@@ -23,10 +24,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "same-origin",
     headers: {
       "content-type": "application/json",
+      "x-wf-connection": connectionId,
       ...init?.headers
     }
   });
   const value = (await response.json()) as T & { error?: string };
+  if (response.status === 403 && value.error === "trial_required") window.location.assign(`/trial?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
   if (!response.ok) throw new Error(value.error ?? "request_failed");
   return value;
 }
@@ -50,17 +53,18 @@ export const api = {
   async leaveRoom() {
     return request<{ snapshot: null }>("/api/leave", { method: "POST", body: "{}" });
   },
-  async command(command: ClientCommand) {
+  async command(command: ClientCommand, roundToken: number | null = null) {
     return request<{ snapshot: Snapshot }>("/api/command", {
       method: "POST",
-      body: JSON.stringify(command)
+      body: JSON.stringify({ ...command, commandId: crypto.randomUUID(), roundToken })
     });
   }
 };
 
 export function subscribeToRoom(
   onSnapshot: (snapshot: Snapshot) => void,
-  onSessionLost: () => void
+  onSessionLost: () => void,
+  onConnectionChange: (connected: boolean) => void = () => undefined
 ) {
   let stopped = false;
   let socket: WebSocket | null = null;
@@ -70,14 +74,20 @@ export function subscribeToRoom(
   function connect() {
     if (stopped) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
-    socket.addEventListener("open", () => { retryDelay = 500; });
+    socket = new WebSocket(`${protocol}//${window.location.host}/ws?connection=${connectionId}`);
+    socket.addEventListener("open", () => { retryDelay = 500; onConnectionChange(true); });
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data)) as { type: string; snapshot?: Snapshot };
       if (message.type === "snapshot" && message.snapshot) onSnapshot(message.snapshot);
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
+      onConnectionChange(false);
       if (stopped) return;
+      if (event.code === 4001 || event.code === 4008) {
+        stopped = true;
+        onSessionLost();
+        return;
+      }
       retryTimer = window.setTimeout(async () => {
         try {
           const session = await api.getSession();
@@ -89,7 +99,7 @@ export function subscribeToRoom(
         } catch {
           // The local server may still be restarting. The socket retry remains authoritative.
         }
-        retryDelay = Math.min(retryDelay * 2, 5_000);
+        retryDelay = Math.min(retryDelay * 2, 60_000);
         connect();
       }, retryDelay);
     });

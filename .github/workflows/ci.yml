@@ -23,3 +23,4 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm --filter @webflipper/worker bundle
       - run: pnpm test:worker:e2e
+      - run: pnpm test:trial:e2e
