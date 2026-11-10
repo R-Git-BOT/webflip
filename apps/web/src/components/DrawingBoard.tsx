@@ -17,9 +17,10 @@ type DrawingBoardProps = {
   confirmed: boolean;
   disabled: boolean;
   initialOperations?: DrawingOperation[];
-  onConfirm(drawing: { operations: DrawingOperation[] }): void;
+  initialRedoOperations?: DrawingOperation[];
+  onConfirm(drawing: { operations: DrawingOperation[]; redoOperations: DrawingOperation[] }): void;
   onReopen(): void;
-  onDraftChange?(drawing: { operations: DrawingOperation[] }): void;
+  onDraftChange?(drawing: { operations: DrawingOperation[]; redoOperations: DrawingOperation[] }): void;
 };
 
 function drawOperations(context: CanvasRenderingContext2D, operations: DrawingOperation[]) {
@@ -47,6 +48,7 @@ export function DrawingBoard({
   confirmed,
   disabled,
   initialOperations = [],
+  initialRedoOperations = [],
   onConfirm,
   onReopen,
   onDraftChange
@@ -55,13 +57,11 @@ export function DrawingBoard({
   const historyRef = useRef<DrawingHistory | null>(null);
   const activePointsRef = useRef<Point[] | null>(null);
   const [revision, setRevision] = useState(0);
+  const onDraftRef = useRef(onDraftChange);
+  onDraftRef.current = onDraftChange;
 
   if (historyRef.current === null) {
-    const history = createDrawingHistory();
-    for (const operation of initialOperations) {
-      if (operation.kind === "stroke") history.addStroke(operation.points);
-      else history.clear();
-    }
+    const history = createDrawingHistory({ operations: initialOperations, redoOperations: initialRedoOperations });
     historyRef.current = history;
   }
 
@@ -73,12 +73,13 @@ export function DrawingBoard({
   }, [revision]);
 
   useEffect(() => {
-    if (!onDraftChange || confirmed) return;
+    if (!onDraftRef.current || confirmed || disabled || revision === 0) return;
     const timeout = window.setTimeout(() => {
-      onDraftChange({ operations: historyRef.current?.getState().operations ?? [] });
+      const drawing = historyRef.current?.exportState();
+      if (drawing) onDraftRef.current?.(drawing);
     }, 1000);
     return () => window.clearTimeout(timeout);
-  }, [confirmed, onDraftChange, revision]);
+  }, [confirmed, disabled, revision]);
 
   function pointFromEvent(event: React.PointerEvent<HTMLCanvasElement>): Point {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -162,7 +163,7 @@ export function DrawingBoard({
           className="button button--primary answer-action"
           type="button"
           disabled={disabled}
-          onClick={() => onConfirm({ operations: historyRef.current?.getState().operations ?? [] })}
+          onClick={() => { if (historyRef.current) onConfirm(historyRef.current.exportState()); }}
         >
           <CheckCircle aria-hidden="true" size={28} />回答を確定
         </button>

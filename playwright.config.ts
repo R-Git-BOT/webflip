@@ -7,12 +7,11 @@ export default defineConfig({
   outputDir: "test-results",
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:5173",
-    channel: "chrome",
+    baseURL: process.env.WORKER_BASE_URL ?? "http://127.0.0.1:5173",
     screenshot: "only-on-failure",
     trace: "retain-on-failure"
   },
-  webServer: {
+  webServer: process.env.WORKER_BASE_URL ? undefined : {
     command: "pnpm dev",
     url: "http://127.0.0.1:5173",
     reuseExistingServer: true,

@@ -52,6 +52,16 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await participant.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.2, { steps: 8 });
   await participant.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.5, { steps: 8 });
   await participant.mouse.up();
+  const draftSaved = participant.waitForResponse(response => {
+    if (!response.url().endsWith("/api/command") || response.request().method() !== "POST") return false;
+    const command = response.request().postDataJSON();
+    return command.type === "draft.save" && command.drawing.redoOperations?.length === 1 && response.ok();
+  });
+  await participant.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await draftSaved;
+  await participant.reload();
+  await expect(participant.getByRole("button", { name: "やり直す", exact: true })).toBeEnabled();
+  await participant.getByRole("button", { name: "やり直す", exact: true }).click();
   await participant.screenshot({ path: testInfo.outputPath("participant-drawing.png"), fullPage: true });
   await participant.getByRole("button", { name: "回答を確定" }).click();
 

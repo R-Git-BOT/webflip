@@ -9,6 +9,17 @@ class FakeStore {
   async put(value: unknown) { this.value = structuredClone(value); }
 }
 
+it("serves session reads without requiring a storage write", async () => {
+  const store = new FakeStore();
+  const api = createRoomApi(store);
+  const created = await api.fetch(new Request("https://ABC234/api/rooms", { method: "POST", body: JSON.stringify({ capacity: 10, answerSeconds: 60, scoreMode: "none" }) }));
+  const cookie = created.headers.get("set-cookie")!.split(";")[0]!;
+  store.put = async () => { throw new Error("storage_write_unavailable"); };
+  const response = await api.fetch(new Request("https://ABC234/api/session", { headers: { cookie } }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ snapshot: { role: "host" } });
+});
+
 it("routes Worker requests to a Durable Object and preserves the session after object recreation", async () => {
   const data = new Map<string, unknown>();
   const state = {

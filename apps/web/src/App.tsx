@@ -218,9 +218,11 @@ function ParticipantAnsweringScreen({ snapshot, send, onLeave }: { snapshot: Sna
       <section className="answer-layout">
         <header className="prompt-block prompt-block--horizontal"><span>お題</span><h1>{round?.prompt}</h1><TimeRemaining endsAt={round?.endsAt ?? Date.now()} /></header>
         <DrawingBoard
+          key={round?.startedAt}
           confirmed={answer?.confirmed ?? false}
           disabled={false}
           initialOperations={(answer?.drawing.operations ?? []) as DrawingOperation[]}
+          initialRedoOperations={(answer?.drawing.redoOperations ?? []) as DrawingOperation[]}
           onDraftChange={(drawing) => send({ type: "draft.save", drawing })}
           onConfirm={(drawing) => send({ type: "answer.confirm", drawing })}
           onReopen={() => send({ type: "answer.reopen" })}
@@ -357,6 +359,9 @@ function ResultsScreen({ snapshot, send, onLeave }: { snapshot: Snapshot; send(c
 
 function ScreenRouter({ snapshot, send, onOpenRound, onLeave }: { snapshot: Snapshot; send(command: ClientCommand): void; onOpenRound(): void; onLeave(): void }) {
   const { room } = snapshot;
+  if (room.phase !== "ended" && room.hostDisconnectedAt !== undefined) {
+    return <main className="loading-screen"><h1>ホストの復帰を待っています</h1><p>進行と描画を一時停止しています。</p></main>;
+  }
   if (room.phase === "waiting") {
     if (snapshot.role === "host") {
       return (

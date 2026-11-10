@@ -1,30 +1,14 @@
 import { createRoomApi } from "./room-api";
-import { createBlobRoomStore, type BlobBucket } from "./blob-room-store";
+import { createBlobRoomStore } from "./blob-room-store";
 import type { PersistedRoomService } from "../../../packages/runtime/src/index";
 
-interface Socket {
-  send(value: string): void;
-  close(code?: number, reason?: string): void;
-  serializeAttachment(value: unknown): void;
-  deserializeAttachment(): { cookie: string };
-}
-interface State {
-  storage: {
-    get<T>(key: string): Promise<T | undefined>;
-    put(key: string, value: unknown): Promise<void>;
-    setAlarm(time: number): Promise<void>;
-    deleteAlarm(): Promise<void>;
-  };
-  acceptWebSocket(socket: Socket): void;
-  getWebSockets(): Socket[];
-  blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
-}
+type Socket = WebSocket;
+type State = DurableObjectState;
 interface Env {
-  ROOMS: { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } };
-  CANVAS: BlobBucket;
-  ASSETS: { fetch(request: Request): Promise<Response> };
+  ROOMS: DurableObjectNamespace;
+  CANVAS: R2Bucket;
+  ASSETS: Fetcher;
 }
-declare const WebSocketPair: { new(): { 0: Socket; 1: Socket } };
 
 export class RoomDurableObject {
   private readonly store;
@@ -41,6 +25,7 @@ export class RoomDurableObject {
       if (new URL(request.url).pathname === "/ws") {
         if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response(null, { status: 426 });
         const cookie = request.headers.get("cookie") ?? "";
+        await this.connection(cookie, true);
         const snapshot = await this.snapshot(cookie);
         if (!snapshot) return new Response(null, { status: 401 });
         for (const old of this.state.getWebSockets()) {
@@ -50,18 +35,28 @@ export class RoomDurableObject {
         pair[1].serializeAttachment({ cookie });
         this.state.acceptWebSocket(pair[1]);
         pair[1].send(JSON.stringify({ type: "snapshot", snapshot }));
+        await this.schedule();
+        await this.broadcast();
         return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit);
       }
       const response = await this.api.fetch(request);
-      if (response.ok) {
-        const persisted = await this.store.get() as PersistedRoomService | undefined;
-        const room = persisted?.rooms[0]?.[1];
-        if (room?.phase === "answering" && room.round) await this.state.storage.setAlarm(room.round.endsAt);
-        else await this.state.storage.deleteAlarm();
+      if (response.ok && request.method !== "GET") {
+        await this.schedule();
         await this.broadcast();
       }
       return response;
     });
+  }
+  private async schedule() {
+    const persisted = await this.store.get() as PersistedRoomService | undefined;
+    const room = persisted?.rooms[0]?.[1];
+    if (room?.phase === "ended" && room.endedAt !== undefined) await this.state.storage.setAlarm(room.endedAt + 300_000);
+    else if (room && room.hostDisconnectedAt !== undefined) await this.state.storage.setAlarm(room.hostDisconnectedAt + 300_000);
+    else if (room) await this.state.storage.setAlarm(Math.min(room.phase === "answering" && room.round ? room.round.endsAt : Infinity, (room.lastActivityAt ?? Date.now()) + 7_200_000));
+    else await this.state.storage.deleteAlarm();
+  }
+  private async connection(cookie: string, connected: boolean) {
+    return this.api.fetch(new Request("https://internal/internal/connection", { method: "POST", headers: { cookie }, body: JSON.stringify({ connected }) }));
   }
   private async snapshot(cookie: string) {
     const response = await this.api.fetch(new Request("https://internal/api/session", { headers: { cookie } }));
@@ -81,7 +76,16 @@ export class RoomDurableObject {
     await this.fetch(new Request("https://internal/internal/alarm", { method: "POST" }));
   }
   webSocketMessage() { /* Commands are authenticated HTTP requests. */ }
-  webSocketClose(socket: Socket, code: number) { socket.close(code); }
+  async webSocketClose(socket: Socket) {
+    await this.state.blockConcurrencyWhile(async () => {
+      const cookie = socket.deserializeAttachment().cookie;
+      if (this.state.getWebSockets().some(other => other !== socket && other.readyState === 1 && other.deserializeAttachment().cookie === cookie)) return;
+      await this.connection(cookie, false);
+      await this.schedule();
+      await this.broadcast();
+    });
+  }
+  async webSocketError(socket: Socket) { await this.webSocketClose(socket); }
 }
 
 export default {

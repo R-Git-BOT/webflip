@@ -21,6 +21,7 @@ export type RoomSnapshot = {
 };
 
 export type LocalRoomService = {
+  setConnection(sessionId: string, connected: boolean, now: number): void;
   exportState(): PersistedRoomService;
   createRoom(settings: {
     capacity: number;
@@ -100,6 +101,13 @@ export function createLocalRoomService(
   for (const [id, session] of persisted?.sessions ?? []) sessions.set(id, session);
 
   return {
+    setConnection(sessionId, connected, now) {
+      const session = sessions.get(sessionId);
+      if (!session) throw new Error("session_not_found");
+      const room = rooms.get(session.roomCode);
+      if (!room) throw new Error("room_not_found");
+      room.dispatch(session.role === "host" ? { type: "host.connection", connected, now } : { type: "participant.connection", participantId: session.participantId, connected });
+    },
     exportState() {
       return structuredClone({ rooms: [...rooms].map(([code, engine]) => [code, engine.getState()] as [string, RoomState]), sessions: [...sessions] });
     },
@@ -190,6 +198,26 @@ export function createLocalRoomService(
       const expiredRoomCodes: string[] = [];
       for (const [roomCode, room] of rooms) {
         const state = room.getState();
+        if (state.phase === "ended") {
+          if (state.endedAt !== undefined && now >= state.endedAt + 300_000) {
+            rooms.delete(roomCode);
+            for (const [id, session] of sessions) if (session.roomCode === roomCode) sessions.delete(id);
+            expiredRoomCodes.push(roomCode);
+          }
+          continue;
+        }
+        if (state.hostDisconnectedAt !== undefined) {
+          if (now >= state.hostDisconnectedAt + 300_000) {
+            room.dispatch({ type: "room.end", hostId: state.hostId });
+            expiredRoomCodes.push(roomCode);
+          }
+          continue;
+        }
+        if (state.lastActivityAt !== undefined && now >= state.lastActivityAt + 7_200_000) {
+          room.dispatch({ type: "room.end", hostId: state.hostId });
+          expiredRoomCodes.push(roomCode);
+          continue;
+        }
         if (state.phase !== "answering" || !state.round || state.round.endsAt > now) continue;
         room.dispatch({ type: "round.close", hostId: state.hostId });
         expiredRoomCodes.push(roomCode);

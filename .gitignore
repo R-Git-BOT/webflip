@@ -8,3 +8,4 @@ coverage/
 output/
 test-results/
 playwright-report/
+.wrangler/

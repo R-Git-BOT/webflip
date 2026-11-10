@@ -20,7 +20,7 @@ export function createRoomApi(store: RoomStore) {
     const sessionCookie = (id: string) => ({ "set-cookie": `wf_session=${id}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=7200` });
     try {
       let response: Response;
-      service.expireDueRounds(Date.now());
+      const expired = service.expireDueRounds(Date.now()).length > 0;
       if (request.method === "POST" && url.pathname === "/api/rooms") {
         if (service.exportState().rooms.length) return json({ error: "room_exists" }, 409);
         const input = await request.json() as { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" };
@@ -31,6 +31,11 @@ export function createRoomApi(store: RoomStore) {
         const input = await request.json() as { name: string };
         const joined = service.joinRoom({ roomCode: url.pathname.split("/")[3]!, name: input.name });
         response = json({ snapshot: service.getSnapshot(joined.sessionId) }, 200, sessionCookie(joined.sessionId));
+      } else if (request.method === "POST" && url.pathname === "/internal/connection") {
+        if (!cookie) return json({ error: "session_not_found" }, 401);
+        const input = await request.json() as { connected: boolean };
+        service.setConnection(cookie, input.connected, Date.now());
+        response = json({ ok: true });
       } else if (request.method === "POST" && url.pathname === "/internal/alarm") {
         response = json({ ok: true });
       } else if (request.method === "GET" && url.pathname === "/api/session") {
@@ -46,7 +51,9 @@ export function createRoomApi(store: RoomStore) {
         if (command.type === "answer.toggleCorrect" && typeof command.participantId !== "string") throw new Error("invalid_command");
         if (command.type === "draft.save" || command.type === "answer.confirm") {
           if (!command.drawing || !Array.isArray(command.drawing.operations) || JSON.stringify(command.drawing).length > 1_000_000) throw new Error("invalid_drawing");
-          for (const entry of command.drawing.operations) {
+          const drawing = command.drawing as { operations: unknown[]; redoOperations?: unknown[] };
+          if (drawing.redoOperations !== undefined && !Array.isArray(drawing.redoOperations)) throw new Error("invalid_drawing");
+          for (const entry of [...drawing.operations, ...(drawing.redoOperations ?? [])]) {
             const op = entry as { kind: string; points?: number[][] };
             if (!op || (op.kind !== "clear" && (op.kind !== "stroke" || !Array.isArray(op.points) || !op.points.every(p => Array.isArray(p) && p.length === 2 && p.every((n, i) => Number.isFinite(n) && n >= 0 && n <= (i === 0 ? 1024 : 768)))))) throw new Error("invalid_drawing");
           }
@@ -58,7 +65,7 @@ export function createRoomApi(store: RoomStore) {
         service.leaveRoom(cookie);
         response = json({ snapshot: null }, 200, sessionCookie(""));
       } else return json({ error: "not_found" }, 404);
-      await store.put(service.exportState());
+      if (request.method !== "GET" || expired) await store.put(service.exportState());
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : "request_failed";

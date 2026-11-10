@@ -18,6 +18,7 @@ export type DrawingHistoryState = {
 };
 
 export type DrawingHistory = {
+  exportState(): { operations: DrawingOperation[]; redoOperations: DrawingOperation[] };
   addStroke(points: Point[]): void;
   clear(): void;
   undo(): void;
@@ -25,11 +26,12 @@ export type DrawingHistory = {
   getState(): DrawingHistoryState;
 };
 
-export function createDrawingHistory(): DrawingHistory {
-  const operations: DrawingOperation[] = [];
-  const redoStack: DrawingOperation[] = [];
+export function createDrawingHistory(saved?: { operations: DrawingOperation[]; redoOperations?: DrawingOperation[] }): DrawingHistory {
+  const operations: DrawingOperation[] = structuredClone(saved?.operations ?? []);
+  const redoStack: DrawingOperation[] = structuredClone(saved?.redoOperations ?? []);
 
   return {
+    exportState() { return structuredClone({ operations, redoOperations: redoStack }); },
     addStroke(points) {
       operations.push({ kind: "stroke", points: structuredClone(points) });
       redoStack.length = 0;

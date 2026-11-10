@@ -21,3 +21,5 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - run: pnpm --filter @webflipper/worker bundle
+      - run: pnpm test:worker:e2e

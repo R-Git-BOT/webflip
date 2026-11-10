@@ -10,7 +10,9 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:worker:e2e": "playwright test --config playwright.worker.config.ts",
+    "build:worker": "pnpm --filter @webflipper/web build && pnpm --filter @webflipper/worker bundle"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.1",

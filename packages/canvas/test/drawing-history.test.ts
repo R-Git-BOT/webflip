@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createDrawingHistory } from "../src/index";
 
 describe("DrawingHistory", () => {
+  it("restores redo operations from a saved drawing history", () => {
+    const history = createDrawingHistory();
+    history.addStroke([[10,20], [30,40]]);
+    history.undo();
+    const restored = createDrawingHistory(history.exportState());
+    restored.redo();
+    expect(restored.getState().operations).toEqual([{ kind: "stroke", points: [[10,20], [30,40]] }]);
+  });
   it("restores the latest stroke with undo and redo", () => {
     const history = createDrawingHistory();
     history.addStroke([[10, 20], [30, 40]]);

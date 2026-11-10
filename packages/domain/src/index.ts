@@ -28,6 +28,7 @@ export type RoundState = {
 
 export type DrawingData = {
   operations: unknown[];
+  redoOperations?: unknown[];
 };
 
 export type Answer = {
@@ -37,6 +38,10 @@ export type Answer = {
 };
 
 export type RoomState = {
+  lastActivityAt?: number;
+  endedAt?: number;
+  hostDisconnectedAt?: number;
+  pausedRemainingMs?: number;
   roomId: string;
   roomCode: string;
   hostId: string;
@@ -122,6 +127,8 @@ export type ExitParticipantCommand = {
 };
 
 export type RoomCommand =
+  | { type: "host.connection"; connected: boolean; now: number }
+  | { type: "participant.connection"; participantId: string; connected: boolean }
   | JoinParticipantCommand
   | StartRoundCommand
   | SaveDraftCommand
@@ -158,6 +165,7 @@ function closeRound(state: RoomState) {
 export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomState): RoomEngine {
   const state: RoomState = restoredState ? structuredClone(restoredState) : {
     roomId: input.roomId,
+    lastActivityAt: Date.now(),
     roomCode: input.roomCode,
     hostId: input.hostId,
     phase: "waiting",
@@ -174,6 +182,25 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
   return {
     getState: () => structuredClone(state),
     dispatch(command) {
+      if (command.type === "host.connection") {
+        if (state.phase === "ended") return { ok: true };
+        if (!command.connected && state.hostDisconnectedAt === undefined) {
+          state.hostDisconnectedAt = command.now;
+          if (state.phase === "answering" && state.round) state.pausedRemainingMs = Math.max(0, state.round.endsAt - command.now);
+        }
+        if (command.connected && state.hostDisconnectedAt !== undefined) {
+          if (state.round && state.pausedRemainingMs !== undefined) state.round.endsAt = command.now + state.pausedRemainingMs;
+          delete state.hostDisconnectedAt;
+          delete state.pausedRemainingMs;
+        }
+        return { ok: true };
+      }
+      if (command.type === "participant.connection") {
+        const participant = state.participants.find(p => p.id === command.participantId && !p.left);
+        if (participant) participant.connected = command.connected;
+        return { ok: true };
+      }
+      if (state.hostDisconnectedAt !== undefined && !["participant.exit", "room.end"].includes(command.type)) throw new Error("host_absent");
       if (command.type === "participant.join") {
         if (state.phase === "ended") throw new Error("room_ended");
         const name = command.name.trim();
@@ -358,8 +385,12 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
         state.phase = "ended";
         state.participants = [];
         state.round = null;
+        state.endedAt = Date.now();
+        delete state.hostDisconnectedAt;
+        delete state.pausedRemainingMs;
       }
 
+      state.lastActivityAt = Date.now();
       return { ok: true };
     }
   };

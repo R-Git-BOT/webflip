@@ -28,6 +28,8 @@ export function createBlobRoomStore(metadata: RoomStore, bucket: BlobBucket): Ro
       const previous = await metadata.get() as Envelope | undefined;
       const state = structuredClone(value) as PersistedRoomService;
       const drawings: Record<string, string> = {};
+      const created: string[] = [];
+      try {
       for (const [code, room] of state.rooms) {
         for (const answer of room.round?.answers ?? []) {
           const id = `${code}/${answer.participantId}`;
@@ -37,6 +39,7 @@ export function createBlobRoomStore(metadata: RoomStore, bucket: BlobBucket): Ro
           if (oldKey && oldBlob && await oldBlob.text() === data) drawings[id] = oldKey;
           else {
             const key = `${code}/${crypto.randomUUID()}`;
+            created.push(key);
             await bucket.put(key, data);
             drawings[id] = key;
           }
@@ -44,6 +47,10 @@ export function createBlobRoomStore(metadata: RoomStore, bucket: BlobBucket): Ro
         }
       }
       await metadata.put({ state, drawings } satisfies Envelope);
+      } catch (error) {
+        await Promise.allSettled(created.map(key => bucket.delete(key)));
+        throw error;
+      }
       const retained = new Set(Object.values(drawings));
       for (const key of Object.values(previous?.drawings ?? {})) {
         if (!retained.has(key)) await bucket.delete(key);
