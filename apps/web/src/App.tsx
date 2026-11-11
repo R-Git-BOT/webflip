@@ -349,7 +349,7 @@ function JudgingScreen({ snapshot, send, onLeave, busy }: { snapshot: Snapshot; 
         <AppHeader roomCode={snapshot.room.roomCode} status="正解選択中" onLeave={onLeave} />
         <section className="participant-judging">
           <h1>ホストが正解を選んでいます</h1>
-          {ownAnswer ? <CanvasPreview operations={ownAnswer.drawing.operations as DrawingOperation[]} correct={false} /> : null}
+          {ownAnswer ? <div className="participant-judging__surface"><CanvasPreview operations={ownAnswer.drawing.operations as DrawingOperation[]} correct={false} /></div> : null}
         </section>
       </main>
     );

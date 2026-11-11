@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }, { width: 820, height: 1180 }, { width: 1180, height: 820 }]) {
   test(`displays fifty answers within the viewport at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     const errors: string[] = [];
@@ -27,7 +27,10 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(page.locator(".answer-card--correct")).toHaveCount(1);
     const layout = await page.locator(".answer-card").evaluateAll(cards => ({
       fits: cards.every(card => { const box = card.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth; }),
-      canvasesVisible: cards.every(card => card.querySelector("canvas")!.getBoundingClientRect().height > 10),
+      canvasesVisible: cards.every(card => {
+        const canvas = card.querySelector("canvas")!.getBoundingClientRect();
+        return canvas.height > 10 && Math.abs(canvas.width / canvas.height - 4 / 3) < 0.02;
+      }),
       pageFits: document.documentElement.scrollHeight <= innerHeight + 1
     }));
     expect(layout).toEqual({ fits: true, canvasesVisible: true, pageFits: true });

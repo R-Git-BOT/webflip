@@ -1,5 +1,19 @@
 import { expect, test } from "@playwright/test";
 
+async function expectPreviewFits(page: import("@playwright/test").Page, selector: string, containerSelector: string) {
+  const geometry = await page.locator(selector).first().evaluate((canvas, containerSelector) => {
+    const box = canvas.getBoundingClientRect();
+    const container = canvas.closest(containerSelector)?.getBoundingClientRect();
+    return { canvas: { x: box.x, y: box.y, width: box.width, height: box.height }, container: container && { x: container.x, y: container.y, width: container.width, height: container.height } };
+  }, containerSelector);
+  expect(geometry.container).toBeTruthy();
+  expect(Math.abs(geometry.canvas.width / geometry.canvas.height - 4 / 3)).toBeLessThan(0.02);
+  expect(geometry.canvas.x).toBeGreaterThanOrEqual(geometry.container!.x - 2);
+  expect(geometry.canvas.y).toBeGreaterThanOrEqual(geometry.container!.y - 2);
+  expect(geometry.canvas.x + geometry.canvas.width).toBeLessThanOrEqual(geometry.container!.x + geometry.container!.width + 2);
+  expect(geometry.canvas.y + geometry.canvas.height).toBeLessThanOrEqual(geometry.container!.y + geometry.container!.height + 2);
+}
+
 test("host and participant complete one drawing round", async ({ browser }, testInfo) => {
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const participantContext = await browser.newContext({ viewport: { width: 1180, height: 900 } });
@@ -70,6 +84,14 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await participant.getByRole("button", { name: "回答を確定" }).click();
 
   await expect(host.getByRole("heading", { name: "正解を選ぶ" })).toBeVisible();
+  for (const viewport of [{ width: 820, height: 1180 }, { width: 1180, height: 820 }]) {
+    await participant.setViewportSize(viewport);
+    await host.setViewportSize(viewport);
+    await expectPreviewFits(participant, ".participant-judging .answer-preview", ".participant-judging__surface");
+    await expectPreviewFits(host, ".judging-layout .answer-preview", ".answer-card__surface");
+    await participant.screenshot({ path: testInfo.outputPath(`judging-participant-${viewport.width}.png`) });
+    await host.screenshot({ path: testInfo.outputPath(`judging-host-${viewport.width}.png`) });
+  }
   await host.getByRole("button", { name: /回答 1/ }).click();
   let rejectedOldRound = false;
   await host.route("**/api/command", async route => {
@@ -84,6 +106,13 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await host.getByRole("button", { name: "結果を公開" }).click();
   await expect(participant.getByText("結果", { exact: true })).toBeVisible();
   await expect(participant.locator(".answer-card--correct")).toHaveCount(1);
+  for (const viewport of [{ width: 820, height: 1180 }, { width: 1180, height: 820 }]) {
+    await participant.setViewportSize(viewport);
+    await host.setViewportSize(viewport);
+    await expectPreviewFits(participant, ".results-layout .answer-preview", ".answer-card__surface");
+    await expectPreviewFits(host, ".results-layout .answer-preview", ".answer-card__surface");
+    await participant.screenshot({ path: testInfo.outputPath(`results-participant-${viewport.width}.png`) });
+  }
   await host.screenshot({ path: testInfo.outputPath("host-results.png"), fullPage: true });
 
   await host.getByRole("button", { name: "次の問題へ", exact: true }).click();
