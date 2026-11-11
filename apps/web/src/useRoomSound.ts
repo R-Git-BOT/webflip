@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Snapshot } from "./api";
 
-type SoundName = "AnswersDisplay" | "EndThinkTime" | "JoinUser" | "QuizStart" | "ThinkTimeBGM";
-const names: SoundName[] = ["AnswersDisplay", "EndThinkTime", "JoinUser", "QuizStart", "ThinkTimeBGM"];
+type SoundName = "AnswersDisplay" | "EndThinkTime" | "JoinUser" | "QuizStart" | "ThinkTimeBGM" | "Copy";
+const names: SoundName[] = ["AnswersDisplay", "EndThinkTime", "JoinUser", "QuizStart", "ThinkTimeBGM", "Copy"];
 
 export function useRoomSound(snapshot: Snapshot | null) {
   const [enabled, setEnabled] = useState(true);
@@ -11,6 +11,7 @@ export function useRoomSound(snapshot: Snapshot | null) {
   const latest = useRef(snapshot);
   latest.current = snapshot;
   const enabledRef = useRef(enabled);
+  const loading = useRef<Partial<Record<SoundName, Promise<void>>>>({});
   enabledRef.current = enabled;
 
   function play(name: SoundName, loop = false) {
@@ -42,7 +43,7 @@ export function useRoomSound(snapshot: Snapshot | null) {
         const state = { context, master, buffers: {} as Partial<Record<SoundName, AudioBuffer>> };
         audio.current = state;
         for (const name of names) {
-          void fetch(`/sounds/${name}.mp3`).then(response => {
+          loading.current[name] = fetch(`/sounds/${name}.mp3`).then(response => {
             if (!response.ok) throw new Error("sound_unavailable");
             return response.arrayBuffer();
           }).then(data => context.decodeAudioData(data)).then(buffer => {
@@ -80,5 +81,11 @@ export function useRoomSound(snapshot: Snapshot | null) {
     else if (!audio.current?.bgm) play("ThinkTimeBGM", true);
   }, [snapshot, enabled]);
 
-  return { enabled, toggle: () => setEnabled(value => !value) };
+  return { enabled, toggle: () => setEnabled(value => !value), playCopy: () => {
+    const state = audio.current;
+    if (!state || !enabledRef.current) return;
+    void Promise.all([loading.current.Copy, state.context.resume()]).then(() => {
+      if (audio.current === state) play("Copy");
+    }).catch(() => undefined);
+  } };
 }

@@ -380,7 +380,7 @@ function ResultsScreen({ snapshot, send, onLeave, onOpenRound }: { snapshot: Sna
   );
 }
 
-function ScreenRouter({ snapshot, send, onOpenRound, onLeave, onReturnToStart, connected, busy }: { snapshot: Snapshot; send(command: ClientCommand): void; onOpenRound(): void; onLeave(): void; onReturnToStart(): void; connected: boolean; busy: boolean }) {
+function ScreenRouter({ snapshot, send, onOpenRound, onLeave, onReturnToStart, onCopy, connected, busy }: { snapshot: Snapshot; send(command: ClientCommand): void; onOpenRound(): void; onLeave(): void; onReturnToStart(): void; onCopy(): void; connected: boolean; busy: boolean }) {
   const { room } = snapshot;
   if (room.phase !== "ended" && room.storagePausedAt !== undefined) return <main className="loading-screen"><h1>保存機能の復旧を待っています</h1><p>進行と描画を一時停止しています。</p></main>;
   if (room.phase !== "ended" && room.hostDisconnectedAt !== undefined) {
@@ -392,6 +392,7 @@ function ScreenRouter({ snapshot, send, onOpenRound, onLeave, onReturnToStart, c
         <HostWaitingScreen
           roomCode={room.roomCode}
           participants={room.participants}
+          onCopy={onCopy}
           capacity={room.settings.capacity}
           onRemove={participantId => {
             const name = room.participants.find(p => p.id === participantId)?.name ?? "参加者";
@@ -552,7 +553,7 @@ export function App() {
       <button className="sound-toggle" type="button" aria-label={sound.enabled ? "音をオフにする" : "音をオンにする"} aria-pressed={sound.enabled} onClick={sound.toggle}>{sound.enabled ? "音 ON" : "音 OFF"}</button>
       <div className={snapshot.room.phase !== "waiting" && snapshot.room.phase !== "ended" ? "game-shell" : ""}>
       {snapshot.room.phase !== "waiting" && snapshot.room.phase !== "ended" ? <GameRoster snapshot={snapshot} send={send} /> : null}
-      <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} onReturnToStart={() => void returnToStart()} connected={connected} busy={busy} />
+      <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} onReturnToStart={() => void returnToStart()} onCopy={sound.playCopy} connected={connected} busy={busy} />
       </div>
       {roundDialogOpen ? (
         <RoundDialog

@@ -28,6 +28,7 @@ type HostWaitingScreenProps = {
   onEnd(): void;
   onRemove?(participantId: string): void;
   onRemoveDisconnected?(): void;
+  onCopy?(): void;
 };
 
 const AVATAR_COLORS = ["#dd4b55", "#2056d7", "#d38a10", "#7046b5"];
@@ -51,12 +52,18 @@ export function HostWaitingScreen({
   onStart,
   onEnd,
   onRemove,
-  onRemoveDisconnected
+  onRemoveDisconnected,
+  onCopy
 }: HostWaitingScreenProps) {
   const joinUrl =
     typeof window === "undefined"
       ? `https://webflipper.app/room/${roomCode}`
       : `${window.location.origin}/?room=${roomCode}`;
+
+  async function copyAndPlay(value: string) {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    try { await copyText(value); onCopy?.(); } catch { /* Clipboard access was denied. */ }
+  }
 
   return (
     <main className="screen-shell screen-shell--host-waiting">
@@ -67,11 +74,11 @@ export function HostWaitingScreen({
           <p className="room-hero__label" id="room-code-title">ルームコード</p>
           <div className="room-code">{roomCode}</div>
           <div className="room-share-actions">
-            <button className="button button--light" type="button" onClick={() => void copyText(roomCode)}>
+            <button className="button button--light" type="button" onClick={() => void copyAndPlay(roomCode)}>
               <Copy aria-hidden="true" size={30} weight="regular" />
               コードをコピー
             </button>
-            <button className="button button--light" type="button" onClick={() => void copyText(joinUrl)}>
+            <button className="button button--light" type="button" onClick={() => void copyAndPlay(joinUrl)}>
               <LinkSimple aria-hidden="true" size={30} weight="regular" />
               参加リンクをコピー
             </button>
