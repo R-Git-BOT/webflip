@@ -5,6 +5,7 @@ import { ROOM_CAPACITIES, type Participant, type RoomState } from "@webflipper/d
 import { api, StaleRoundError, subscribeToRoom, type ClientCommand, type Snapshot } from "./api";
 import { DrawingBoard } from "./components/DrawingBoard";
 import { HostWaitingScreen } from "./components/HostWaitingScreen";
+import { useRoomSound } from "./useRoomSound";
 
 type HomeScreenProps = {
   busy: boolean;
@@ -459,6 +460,7 @@ export function selectInitialSnapshot<T extends { room: { roomCode: string } }>(
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const sound = useRoomSound(snapshot);
   const [loading, setLoading] = useState(() => typeof window !== "undefined");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -547,6 +549,7 @@ export function App() {
 
   return (
     <>
+      <button className="sound-toggle" type="button" aria-label={sound.enabled ? "音をオフにする" : "音をオンにする"} aria-pressed={sound.enabled} onClick={sound.toggle}>{sound.enabled ? "音 ON" : "音 OFF"}</button>
       <div className={snapshot.room.phase !== "waiting" && snapshot.room.phase !== "ended" ? "game-shell" : ""}>
       {snapshot.room.phase !== "waiting" && snapshot.room.phase !== "ended" ? <GameRoster snapshot={snapshot} send={send} /> : null}
       <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} onReturnToStart={() => void returnToStart()} connected={connected} busy={busy} />

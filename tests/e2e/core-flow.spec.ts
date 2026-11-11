@@ -19,6 +19,14 @@ test("host and participant complete one drawing round", async ({ browser }, test
   const participantContext = await browser.newContext({ viewport: { width: 1180, height: 900 } });
   const host = await hostContext.newPage();
   const participant = await participantContext.newPage();
+  await host.addInitScript(() => {
+    const events: string[] = [];
+    (window as unknown as { soundEvents: string[] }).soundEvents = events;
+    const start = AudioBufferSourceNode.prototype.start;
+    const stop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.start = function (...args) { events.push(this.loop ? "bgm-start" : "effect"); return start.apply(this, args); };
+    AudioBufferSourceNode.prototype.stop = function (...args) { if (this.loop) events.push("bgm-stop"); return stop.apply(this, args); };
+  });
   const consoleErrors: string[] = [];
   host.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
   participant.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
@@ -41,6 +49,7 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await participant.getByLabel("ルーム内の名前").fill("たろう");
   await participant.getByRole("button", { name: "ルームに参加", exact: true }).click();
   await expect(host.getByText("1人が接続中")).toBeVisible();
+  await expect.poll(() => host.evaluate(() => (window as unknown as { soundEvents: string[] }).soundEvents.includes("effect"))).toBe(true);
   await host.screenshot({ path: testInfo.outputPath("host-waiting.png"), fullPage: true });
   await participant.screenshot({ path: testInfo.outputPath("participant-waiting-with-exit.png"), fullPage: true });
 
@@ -60,6 +69,7 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await host.getByRole("button", { name: "ラウンドを始める" }).click();
   await host.getByLabel("お題").fill("空を飛ぶもの");
   await host.getByRole("button", { name: "回答受付を始める" }).click();
+  await expect.poll(() => host.evaluate(() => (window as unknown as { soundEvents: string[] }).soundEvents.includes("bgm-start"))).toBe(true);
 
   const canvas = participant.getByLabel("青いキャンバス。白いペンで回答を描きます");
   await expect(canvas).toBeVisible();
@@ -84,6 +94,7 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await participant.getByRole("button", { name: "回答を確定" }).click();
 
   await expect(host.getByRole("heading", { name: "正解を選ぶ" })).toBeVisible();
+  await expect.poll(() => host.evaluate(() => (window as unknown as { soundEvents: string[] }).soundEvents.includes("bgm-stop"))).toBe(true);
   for (const viewport of [{ width: 820, height: 1180 }, { width: 1180, height: 820 }]) {
     await participant.setViewportSize(viewport);
     await host.setViewportSize(viewport);
