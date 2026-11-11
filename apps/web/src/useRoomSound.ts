@@ -5,7 +5,7 @@ type SoundName = "AnswersDisplay" | "EndThinkTime" | "JoinUser" | "QuizStart" | 
 const names: SoundName[] = ["AnswersDisplay", "EndThinkTime", "JoinUser", "QuizStart", "ThinkTimeBGM", "Copy"];
 
 export function useRoomSound(snapshot: Snapshot | null) {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
   const audio = useRef<{ context: AudioContext; master: GainNode; buffers: Partial<Record<SoundName, AudioBuffer>>; bgm?: AudioBufferSourceNode } | null>(null);
   const previous = useRef<Snapshot | null>(null);
   const latest = useRef(snapshot);

@@ -23,6 +23,33 @@ it("keeps a disconnected host's room for five minutes, then ends it", () => {
   service.expireDueRounds(Date.now());
   expect(service.getSnapshot(host.sessionId).room.phase).toBe("ended");
 });
+it("ends after ten minutes without host activity even if participants act", () => {
+  vi.useFakeTimers(); vi.setSystemTime(1000);
+  let id = 0;
+  const service = createLocalRoomService({ nextId: () => String(++id), nextRoomCode: () => "ABC234" });
+  const host = service.createRoom({ capacity: 10, answerSeconds: 60, scoreMode: "none" });
+  vi.setSystemTime(500_000);
+  service.joinRoom({ roomCode: host.roomCode, name: "参加者" });
+  vi.setSystemTime(600_999);
+  service.expireDueRounds(Date.now());
+  expect(service.getSnapshot(host.sessionId).room.phase).toBe("waiting");
+  vi.setSystemTime(601_000);
+  service.expireDueRounds(Date.now());
+  expect(service.getSnapshot(host.sessionId).room.phase).toBe("ended");
+});
+it("extends the host inactivity deadline when the host acts", () => {
+  vi.useFakeTimers(); vi.setSystemTime(1000);
+  const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
+  const host = service.createRoom({ capacity: 10, answerSeconds: 60, scoreMode: "none" });
+  vi.setSystemTime(500_000);
+  service.dispatch(host.sessionId, { type: "host.activity" });
+  vi.setSystemTime(601_000);
+  service.expireDueRounds(Date.now());
+  expect(service.getSnapshot(host.sessionId).room.phase).toBe("waiting");
+  vi.setSystemTime(1_100_000);
+  service.expireDueRounds(Date.now());
+  expect(service.getSnapshot(host.sessionId).room.phase).toBe("ended");
+});
 it("ends an abandoned room after two hours and expires its sessions five minutes later", () => {
   vi.useFakeTimers(); vi.setSystemTime(1000);
   let id = 0;

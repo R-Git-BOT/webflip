@@ -6,6 +6,7 @@ test("sound can be enabled and disabled during a room", async ({ page }) => {
   } } } }));
   await page.routeWebSocket("**/ws?*", () => {});
   await page.goto("/");
+  await page.getByRole("button", { name: "音をオンにする" }).click();
   const toggle = page.getByRole("button", { name: "音をオフにする" });
   await expect(toggle).toBeVisible();
   await toggle.click();
@@ -27,6 +28,7 @@ test("copying the room code and invitation plays the copy sound", async ({ page 
   } } } }));
   await page.routeWebSocket("**/ws?*", () => {});
   await page.goto("/");
+  await page.getByRole("button", { name: "音をオンにする" }).click();
   await page.getByRole("button", { name: "コードをコピー" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("ABC234");
   await expect.poll(() => page.evaluate(() => (window as unknown as { soundsPlayed: number[] }).soundsPlayed.length)).toBe(1);

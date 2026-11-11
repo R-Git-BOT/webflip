@@ -123,7 +123,7 @@ export class RoomDurableObject {
         room.storagePausedAt !== undefined ? room.storagePausedAt + 60000 : Infinity);
       if (room.hostDisconnectedAt === undefined && room.storagePausedAt === undefined) deadline = Math.min(deadline,
         room.phase === "answering" && room.round ? room.round.endsAt : Infinity,
-        (room.lastActivityAt ?? Date.now()) + 7200000);
+        (room.lastHostActivityAt ?? room.createdAt ?? Date.now()) + 600000);
     }
     if (deadline < Infinity) await this.state.storage.setAlarm(Math.max(Date.now() + 100, deadline));
     else await this.state.storage.deleteAlarm();

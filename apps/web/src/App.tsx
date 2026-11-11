@@ -485,6 +485,22 @@ export function App() {
     return subscribeToRoom(acceptSnapshot, () => setSnapshot(null), setConnected);
   }, [snapshot?.room.roomCode]);
 
+  useEffect(() => {
+    if (snapshot?.role !== "host" || snapshot.room.phase === "ended" || !connected) return;
+    let lastSent = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sendActivity = () => { lastSent = Date.now(); void api.hostActivity().catch(() => undefined); };
+    const onActivity = () => {
+      if (Date.now() - lastSent >= 30_000) sendActivity();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(sendActivity, 1000);
+    };
+    window.addEventListener("pointerdown", onActivity);
+    window.addEventListener("keydown", onActivity);
+    window.addEventListener("wheel", onActivity, { passive: true });
+    return () => { window.removeEventListener("pointerdown", onActivity); window.removeEventListener("keydown", onActivity); window.removeEventListener("wheel", onActivity); if (timer) clearTimeout(timer); };
+  }, [snapshot?.role, snapshot?.room.roomCode, snapshot?.room.phase === "ended", connected]);
+
   async function run(action: () => Promise<{ snapshot: Snapshot }>) {
     setBusy(true);
     setError(null);

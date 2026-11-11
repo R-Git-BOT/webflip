@@ -41,6 +41,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  hostActivity() {
+    return request<{ snapshot: Snapshot }>("/api/command", { method: "POST", body: JSON.stringify({ type: "host.activity" }) });
+  },
   async getSession() {
     return request<{ snapshot: Snapshot | null }>("/api/session");
   },

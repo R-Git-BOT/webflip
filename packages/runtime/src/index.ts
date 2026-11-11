@@ -44,6 +44,7 @@ export type PersistedRoomService = {
 };
 
 export type LocalCommand =
+  | { type: "host.activity" }
   | { type: "participants.removeDisconnected" }
   | { type: "participant.remove"; participantId: string }
   | {
@@ -185,6 +186,12 @@ export function createLocalRoomService(
       const room = rooms.get(session.roomCode);
       if (!room) throw new Error("room_not_found");
 
+      if (command.type === "host.activity") {
+        if (session.role !== "host") throw new Error("host_required");
+        return room.dispatch({ type: "host.activity", hostId: session.hostId });
+      }
+      if (session.role === "host") room.dispatch({ type: "host.activity", hostId: session.hostId });
+
       if (command.type === "participants.removeDisconnected") {
         if (session.role !== "host") throw new Error("host_required");
         const state = room.getState();
@@ -251,7 +258,7 @@ export function createLocalRoomService(
           }
           continue;
         }
-        if ((state.lastActivityAt !== undefined && now >= state.lastActivityAt + 7_200_000) || (state.createdAt !== undefined && now >= state.createdAt + 7_200_000)) {
+        if (now >= (state.lastHostActivityAt ?? state.createdAt ?? now) + 600_000 || (state.createdAt !== undefined && now >= state.createdAt + 7_200_000)) {
           room.dispatch({ type: "room.end", hostId: state.hostId });
           expiredRoomCodes.push(roomCode);
           continue;

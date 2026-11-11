@@ -45,6 +45,7 @@ export function createRoomApi(store: RoomStore, options: { requirePng?: boolean;
         const input = await request.json() as { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" };
         if (!isRoomCapacity(input.capacity) || ![30,60,90,120,180].includes(input.answerSeconds) || !["none", "correct-count"].includes(input.scoreMode)) throw new Error("invalid_settings");
         const created = service.createRoom(input);
+        if (options.isSessionConnected) service.setConnection(created.sessionId, false, Date.now());
         response = json({ roomCode: created.roomCode, snapshot: service.getSnapshot(created.sessionId) }, 201, sessionCookie(created.sessionId));
       } else if (request.method === "POST" && /\/api\/rooms\/[A-Z0-9]{6}\/join$/.test(url.pathname)) {
         const input = await request.json() as { name: string };
@@ -84,7 +85,7 @@ export function createRoomApi(store: RoomStore, options: { requirePng?: boolean;
           return json({ snapshot: service.getSnapshot(cookie) });
         }
         if (command.roundToken !== undefined && command.roundToken !== (service.getSnapshot(cookie).room.round?.startedAt ?? null)) throw new Error("stale_round");
-        if (!command || !["participants.removeDisconnected", "participant.remove", "round.start", "draft.save", "answer.confirm", "answer.reopen", "answer.toggleCorrect", "results.publish", "round.next", "round.close", "room.end"].includes(command.type)) throw new Error("invalid_command");
+        if (!command || !["host.activity", "participants.removeDisconnected", "participant.remove", "round.start", "draft.save", "answer.confirm", "answer.reopen", "answer.toggleCorrect", "results.publish", "round.next", "round.close", "room.end"].includes(command.type)) throw new Error("invalid_command");
         if (command.type === "participants.removeDisconnected" && options.isSessionConnected) {
           if (service.getSnapshot(cookie).role !== "host") throw new Error("host_required");
           syncPresence();

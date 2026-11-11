@@ -44,6 +44,7 @@ export type RoomState = {
   revision?: number;
   createdAt?: number;
   lastActivityAt?: number;
+  lastHostActivityAt?: number;
   endedAt?: number;
   hostDisconnectedAt?: number;
   storagePausedAt?: number;
@@ -135,6 +136,7 @@ export type ExitParticipantCommand = {
 export type RoomCommand =
   | { type: "storage.connection"; available: boolean; now: number }
   | { type: "host.connection"; connected: boolean; now: number }
+  | { type: "host.activity"; hostId: string }
   | { type: "participant.connection"; participantId: string; connected: boolean }
   | JoinParticipantCommand
   | StartRoundCommand
@@ -174,6 +176,7 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
   const state: RoomState = restoredState ? structuredClone(restoredState) : {
     roomId: input.roomId,
     lastActivityAt: Date.now(),
+    lastHostActivityAt: Date.now(),
     createdAt: Date.now(),
     revision: 0,
     roomCode: input.roomCode,
@@ -192,6 +195,12 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
   return {
     getState: () => structuredClone(state),
     dispatch(command) {
+      if (command.type === "host.activity") {
+        requireHost(command.hostId, state.hostId);
+        if (state.phase === "ended") throw new Error("room_ended");
+        state.lastHostActivityAt = Date.now();
+        return { ok: true };
+      }
       if (command.type === "storage.connection") {
         if (state.phase === "ended") return { ok: true };
         state.revision = (state.revision ?? 0) + 1;

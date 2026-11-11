@@ -38,6 +38,7 @@ test("host and participant complete one drawing round", async ({ browser }, test
   await expect(host.getByLabel("定員")).toHaveValue("10");
   await host.getByLabel("定員").selectOption("50");
   await host.getByRole("button", { name: "ルームを作る", exact: true }).click();
+  await host.getByRole("button", { name: "音をオンにする" }).click();
   await expect(host.locator(".participant-count")).toHaveText("0 / 50");
   const roomCode = (await host.locator(".room-code").innerText()).trim();
   await expect(roomCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);

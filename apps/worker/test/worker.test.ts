@@ -27,6 +27,7 @@ it("removes disconnected sessions using live connection presence rather than an 
   const api = createRoomApi(new FakeStore(), { isSessionConnected: id => connected.has(id) });
   const call = (path: string, body: unknown, cookie = "") => api.fetch(new Request(`https://ABC234${path}`, { method: "POST", headers: { cookie }, body: JSON.stringify(body) }));
   const host = (await call("/api/rooms", { capacity: 50, answerSeconds: 60, scoreMode: "none" })).headers.get("set-cookie")!.split(";")[0]!;
+  await call("/internal/connection", { connected: true }, host);
   const active = (await call("/api/rooms/ABC234/join", { name: "接続中" })).headers.get("set-cookie")!.split(";")[0]!;
   await call("/api/rooms/ABC234/join", { name: "接続できなかった人" });
   connected.add(active.split("=")[1]!);
@@ -42,6 +43,7 @@ it("corrects stale participant presence when the host refreshes the room", async
   const post = (path: string, body: unknown) => api.fetch(new Request(`https://ABC234${path}`, { method: "POST", body: JSON.stringify(body) }));
   const created = await post("/api/rooms", { capacity: 50, answerSeconds: 60, scoreMode: "none" });
   const cookie = created.headers.get("set-cookie")!.split(";")[0]!;
+  await api.fetch(new Request("https://ABC234/internal/connection", { method: "POST", headers: { cookie }, body: JSON.stringify({ connected: true }) }));
   const joined = await post("/api/rooms/ABC234/join", { name: "再接続した人" });
   connected.add(joined.headers.get("set-cookie")!.split(";")[0]!.split("=")[1]!);
   await post("/api/rooms/ABC234/join", { name: "接続できなかった人" });
