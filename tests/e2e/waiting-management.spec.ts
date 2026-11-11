@@ -11,7 +11,8 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 1280, height: 72
     await page.routeWebSocket("**/ws?*", () => {});
     let submitted = "";
     await page.route("**/api/command", async route => {
-      submitted = route.request().postDataJSON().type;
+      const type = route.request().postDataJSON().type;
+      if (type !== "host.activity") submitted = type;
       await route.fulfill({ json: { error: "test_response" }, status: 400 });
     });
     await page.goto("/");
