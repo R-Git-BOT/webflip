@@ -2,7 +2,7 @@
 
 Workers Free、SQLite-backed Durable Objects、非公開R2 Standardバケットを使う匿名限定試用を配置済み。
 
-公開URL: https://webflipper.silver-silent3104.workers.dev
+公開URL: https://webflipper.shojoradi-pages.workers.dev
 
 試用コード、公開・更新・停止、GitHub Actionsの範囲は[限定公開の運用](../../Docs/限定公開の運用.md)を参照。無料枠の予算と制約は[ADR 0006](../../Docs/ADR/0006-limited-free-trial.md)、確認した内容は[検証記録](../../Docs/限定公開の検証記録.md)に記載する。
 
