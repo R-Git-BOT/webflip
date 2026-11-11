@@ -1,6 +1,17 @@
 import { expect, it } from "vitest";
 import { createTrialLimits } from "../src/trial-limits";
 
+it("exempts authorized dummy bursts while retaining the daily budget and normal refresh limits", async () => {
+  let value: unknown;
+  const limits = createTrialLimits({ async get() { return value; }, async put(next) { value = structuredClone(next); } }, { dailyRequests: 62 });
+  for (let i = 0; i < 50; i++) expect((await limits.admit("refresh", "dummy", 0, "ABC234", true)).allowed).toBe(true);
+  for (let i = 0; i < 10; i++) expect((await limits.admit("refresh", "normal", 0)).allowed).toBe(true);
+  expect(await limits.admit("refresh", "normal", 0)).toMatchObject({ reason: "rate_limited" });
+  await limits.admit("command", "dummy", 0, "ABC234", true);
+  await limits.admit("command", "dummy", 0, "ABC234", true);
+  expect(await limits.admit("refresh", "dummy", 0, "ABC234", true)).toMatchObject({ allowed: false, reason: "daily_limit" });
+});
+
 it("blocks refresh bursts and retains the daily limit after recreation", async () => {
   let value: unknown;
   const store = { async get() { return structuredClone(value); }, async put(next: unknown) { value = structuredClone(next); } };

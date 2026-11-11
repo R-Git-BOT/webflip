@@ -3,11 +3,12 @@ import { createBlobRoomStore } from "./blob-room-store";
 import type { PersistedRoomService } from "../../../packages/runtime/src/index";
 import { issueTrialCookie, verifyTrialCookie, verifyTrialCode, trialPage, safeTrialPath } from "./trial-access";
 import { createStorageRecovery } from "./storage-recovery";
+import { verifyDummyToken } from "./dummy-access";
 export { TrialGateDurableObject } from "./trial-gate";
 
 type Socket = WebSocket;
 type State = DurableObjectState;
-type Env = WorkerBindings;
+type Env = WorkerBindings & { DUMMY_ACCESS_SECRET?: string };
 
 export class RoomDurableObject {
   private readonly store;
@@ -204,6 +205,10 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
       request = new Request(request, { body });
     }
     const trialEnabled = env.TRIAL_MODE !== "off";
+    const dummyRoom = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/join$/)?.[1]
+      ?? request.headers.get("cookie")?.match(/(?:^|;\s*)wf_room=([A-Z0-9]{6})(?:;|$)/)?.[1];
+    const dummyToken = request.headers.get("x-wf-dummy-token");
+    const dummyAuthorized = isApi && url.pathname !== "/api/rooms" && await verifyDummyToken(dummyToken, env.DUMMY_ACCESS_SECRET, dummyRoom, Date.now());
     let actor = ip;
     if (trialEnabled) {
       if (!env.TRIAL_CODE || !env.TRIAL_GATE || !env.REQUEST_LIMITER || !env.LOGIN_LIMITER) return Response.json({ error: "trial_unavailable" }, { status: 503 });
@@ -218,8 +223,8 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
         return new Response(null, { status: 303, headers: { location: safeTrialPath(next), "set-cookie": `wf_trial=${value}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`, "cache-control": "no-store" } });
       }
       const accessCookie = request.headers.get("cookie")?.match(/(?:^|;\s*)wf_trial=([^;]+)/)?.[1];
-      if (!await verifyTrialCookie(accessCookie, env.TRIAL_CODE, Date.now())) return Response.json({ error: "trial_required" }, { status: 403 });
-      actor = accessCookie!.split(".")[1]!;
+      if (!dummyAuthorized && !await verifyTrialCookie(accessCookie, env.TRIAL_CODE, Date.now())) return Response.json({ error: "trial_required" }, { status: 403 });
+      actor = dummyAuthorized ? `dummy:${dummyToken!.split(".")[3]}` : accessCookie!.split(".")[1]!;
     }
     const create = request.method === "POST" && url.pathname === "/api/rooms";
     const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -230,7 +235,7 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
     if (trialEnabled) {
       gate = env.TRIAL_GATE!.get(env.TRIAL_GATE!.idFromName("limited-trial"));
       const action = create ? "create" : url.pathname.endsWith("/join") ? "join" : request.method === "GET" ? "refresh" : "command";
-      const admission = await gate.fetch(new Request("https://gate/admit", { method: "POST", body: JSON.stringify({ action, actor, roomCode: code }) }));
+      const admission = await gate.fetch(new Request("https://gate/admit", { method: "POST", body: JSON.stringify({ action, actor, roomCode: code, dummyAuthorized }) }));
       if (!admission.ok) {
         const result = await admission.json() as { reason: string; retryAfter: number };
         return Response.json({ error: result.reason }, { status: 429, headers: { "retry-after": String(result.retryAfter) } });

@@ -6,6 +6,7 @@
     "dev": "concurrently -k -n server,web -c yellow,blue \"pnpm --filter @webflipper/local-server dev\" \"pnpm --filter @webflipper/web dev\"",
     "dummy:host": "pnpm --filter @webflipper/local-server dummy:host",
     "dummy:participant": "pnpm --filter @webflipper/local-server dummy:participant",
+    "dummy:fleet": "pnpm --filter @webflipper/local-server dummy:fleet",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",

@@ -9,7 +9,7 @@ export function createTrialLimits(store: RoomStore, options = { dailyRequests: 1
     return pending;
   };
   return {
-    admit(action: Action, actor: string, now: number, roomCode?: string) {
+    admit(action: Action, actor: string, now: number, roomCode?: string, dummyAuthorized = false) {
       return serial(async () => {
         const old = await store.get() as Ledger | undefined;
         const day = Math.floor(now / 86400000);
@@ -23,6 +23,11 @@ export function createTrialLimits(store: RoomStore, options = { dailyRequests: 1
           return { allowed: true, reason: "accepted", retryAfter: 0 };
         }
         if (ledger.used >= options.dailyRequests) return { allowed: false, reason: "daily_limit", retryAfter: Math.ceil(((day + 1) * 86400000 - now) / 1000) };
+        if (dummyAuthorized && ["refresh", "command", "join"].includes(action)) {
+          ledger.used++;
+          await store.put(ledger);
+          return { allowed: true, reason: "accepted", retryAfter: 0 };
+        }
         const period = action === "create" ? 600000 : 60000;
         const maximum = { refresh: 10, command: 120, join: 20, create: 5 }[action];
         for (const [key, window] of Object.entries(ledger.windows)) if (now - window.start >= 600000) delete ledger.windows[key];
