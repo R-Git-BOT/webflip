@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Check, Play, SignOut, X } from "@phosphor-icons/react";
 import type { DrawingOperation } from "@webflipper/canvas";
 import { ROOM_CAPACITIES, type Participant, type RoomState } from "@webflipper/domain";
-import { api, subscribeToRoom, type ClientCommand, type Snapshot } from "./api";
+import { api, StaleRoundError, subscribeToRoom, type ClientCommand, type Snapshot } from "./api";
 import { DrawingBoard } from "./components/DrawingBoard";
 import { HostWaitingScreen } from "./components/HostWaitingScreen";
 
@@ -341,7 +341,7 @@ export function AnswerGrid({ room, judging, onToggle }: { room: RoomState; judgi
   );
 }
 
-function JudgingScreen({ snapshot, send, onLeave }: { snapshot: Snapshot; send(command: ClientCommand): void; onLeave(): void }) {
+function JudgingScreen({ snapshot, send, onLeave, busy }: { snapshot: Snapshot; send(command: ClientCommand): void; onLeave(): void; busy: boolean }) {
   if (snapshot.role === "participant") {
     const ownAnswer = snapshot.room.round?.answers.find((answer) => answer.participantId === snapshot.participantId);
     return (
@@ -360,20 +360,20 @@ function JudgingScreen({ snapshot, send, onLeave }: { snapshot: Snapshot; send(c
       <section className="judging-layout">
         <div><h1>正解を選ぶ</h1><p>正解は0個でも複数でも選べます。</p></div>
         <AnswerGrid room={snapshot.room} judging onToggle={(participantId) => send({ type: "answer.toggleCorrect", participantId })} />
-        <button className="button button--primary publish-button" type="button" onClick={() => send({ type: "results.publish" })}>結果を公開</button>
+        <button className="button button--primary publish-button" type="button" disabled={busy} onClick={() => send({ type: "results.publish" })}>結果を公開</button>
       </section>
     </main>
   );
 }
 
-function ResultsScreen({ snapshot, send, onLeave }: { snapshot: Snapshot; send(command: ClientCommand): void; onLeave(): void }) {
+function ResultsScreen({ snapshot, send, onLeave, onOpenRound }: { snapshot: Snapshot; send(command: ClientCommand): void; onLeave(): void; onOpenRound(): void }) {
   return (
     <main className="flow-screen flow-screen--game">
       <AppHeader roomCode={snapshot.room.roomCode} status="結果" {...(snapshot.role === "participant" ? { onLeave } : {})} />
       <section className="results-layout">
         <header><span>お題</span><h1>{snapshot.room.round?.prompt}</h1></header>
         <AnswerGrid room={snapshot.room} judging={false} />
-        {snapshot.role === "host" ? <button className="button button--primary next-button" type="button" onClick={() => send({ type: "round.next" })}>次のラウンド</button> : null}
+        {snapshot.role === "host" ? <div className="results-actions"><button className="button button--secondary" onClick={() => send({ type: "round.next" })}>ロビーへ戻る</button><button className="button button--primary next-button" onClick={onOpenRound}>次の問題へ</button></div> : null}
       </section>
     </main>
   );
@@ -418,8 +418,12 @@ function ScreenRouter({ snapshot, send, onOpenRound, onLeave, onReturnToStart, c
   if (room.phase === "answering") return snapshot.role === "host" ? <HostAnsweringScreen room={room} onClose={() => {
     if (window.confirm("未確定のCanvasも現在の内容で提出します。回答受付を終了しますか？")) send({ type: "round.close" });
   }} /> : <ParticipantAnsweringScreen snapshot={snapshot} send={send} onLeave={onLeave} connected={connected} />;
-  if (room.phase === "judging") return <JudgingScreen snapshot={snapshot} send={send} onLeave={onLeave} />;
-  return <ResultsScreen snapshot={snapshot} send={send} onLeave={onLeave} />;
+  if (room.phase === "judging") return <JudgingScreen snapshot={snapshot} send={send} onLeave={onLeave} busy={busy} />;
+  return <ResultsScreen snapshot={snapshot} send={send} onLeave={onLeave} onOpenRound={onOpenRound} />;
+}
+
+function GameRoster({ snapshot, send }: { snapshot: Snapshot; send(command: ClientCommand): void }) {
+  return <aside className="game-roster" aria-label="参加者の接続状況"><h2>参加者</h2><div className="game-roster__list">{snapshot.room.participants.filter(p => !p.left).map(p => <div key={p.id} className="game-roster__row"><span>{p.name}</span><small>{p.connected ? "接続中" : "切断中"}</small>{snapshot.role === "host" && !p.connected ? <button onClick={() => { if (window.confirm(`${p.name}を除外しますか？`)) send({ type: "participant.remove", participantId: p.id }); }}>除外</button> : null}</div>)}</div></aside>;
 }
 
 function messageFor(error: unknown) {
@@ -435,11 +439,14 @@ function messageFor(error: unknown) {
     storage_unavailable: "保存機能に接続できません。復旧をお待ちください。",
     storage_daily_limit: "本日の保存上限に達しました。時間をおいてご利用ください。",
     connection_required: "接続を確認しています。少し待ってからお試しください。",
-    stale_round: "ラウンドが変わりました。現在の画面で操作し直してください。",
+    stale_round: "最新のラウンド情報へ更新しました。内容を確認して操作し直してください。",
     invalid_png: "回答画像を保存できませんでした。描画量を減らしてお試しください。",
+    invalid_command: "操作形式を確認できませんでした。ページを再読み込みしてください。",
+    invalid_drawing: "描画データを保存できませんでした。ページを再読み込みしてください。",
+    room_not_judging: "結果はすでに公開済みか、判定画面が更新されています。",
     request_too_large: "回答データが大きすぎます。描画量を減らしてください。"
   };
-  return messages[key] ?? "操作を完了できませんでした。もう一度お試しください。";
+  return messages[key] ?? `操作を完了できませんでした。もう一度お試しください。${/^[a-z_]{1,60}$/.test(key) ? `（${key}）` : ""}`;
 }
 
 export function selectInitialSnapshot<T extends { room: { roomCode: string } }>(
@@ -483,6 +490,10 @@ export function App() {
       const result = await action();
       acceptSnapshot(result.snapshot);
     } catch (caught) {
+      if (caught instanceof StaleRoundError) {
+        if (caught.snapshot) acceptSnapshot(caught.snapshot);
+        else setSnapshot(null);
+      }
       setError(messageFor(caught));
     } finally {
       setBusy(false);
@@ -536,7 +547,10 @@ export function App() {
 
   return (
     <>
+      <div className={snapshot.room.phase !== "waiting" && snapshot.room.phase !== "ended" ? "game-shell" : ""}>
+      {snapshot.room.phase !== "waiting" && snapshot.room.phase !== "ended" ? <GameRoster snapshot={snapshot} send={send} /> : null}
       <ScreenRouter snapshot={snapshot} send={send} onOpenRound={() => setRoundDialogOpen(true)} onLeave={() => void leaveRoom()} onReturnToStart={() => void returnToStart()} connected={connected} busy={busy} />
+      </div>
       {roundDialogOpen ? (
         <RoundDialog
           defaultSeconds={snapshot.room.settings.answerSeconds}

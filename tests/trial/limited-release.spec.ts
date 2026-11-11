@@ -28,7 +28,7 @@ test("requires trial access, saves a PNG answer and rejects refresh bursts", asy
   await host.getByRole("button", { name: "結果を公開" }).click();
   await expect(guest.getByText("結果", { exact: true })).toBeVisible();
   // End through the authenticated current browser connection, then free the trial room.
-  await host.getByRole("button", { name: "次のラウンド" }).click();
+  await host.getByRole("button", { name: "ロビーへ戻る" }).click();
   host.once("dialog", dialog => dialog.accept());
   await host.getByRole("button", { name: "ルームを終了" }).click();
   await expect(host.getByRole("heading", { name: "ルームは終了しました" })).toBeVisible();

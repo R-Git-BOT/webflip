@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { createRoomEngine } from "../src/index";
 
 describe("RoomEngine", () => {
+  it("starts another question directly from results and discards the old answers", () => {
+    const engine = createRoomEngine({ roomId: "r", roomCode: "ABC234", hostId: "h", capacity: 10, answerSeconds: 60, scoreMode: "none" });
+    engine.dispatch({ type: "participant.join", participantId: "p", name: "参加者" });
+    const start = { type: "round.start" as const, hostId: "h", prompt: "一問目", answerSeconds: 60, revealNamesDuringJudging: false };
+    engine.dispatch(start);
+    engine.dispatch({ type: "round.close", hostId: "h" });
+    engine.dispatch({ type: "results.publish", hostId: "h" });
+    engine.dispatch({ ...start, prompt: "二問目" });
+    expect(engine.getState()).toMatchObject({ phase: "answering", completedRounds: 1, round: { prompt: "二問目", correctParticipantIds: [] } });
+  });
   it.each([6, 9, 11, 49, 51, 55, 10.5])("rejects new rooms with unsupported capacity %i", capacity => {
     expect(() => createRoomEngine({ roomId: "r", roomCode: "ABC234", hostId: "h", capacity, answerSeconds: 60, scoreMode: "none" })).toThrow("invalid_settings");
   });

@@ -71,12 +71,41 @@ test("host and participant complete one drawing round", async ({ browser }, test
 
   await expect(host.getByRole("heading", { name: "正解を選ぶ" })).toBeVisible();
   await host.getByRole("button", { name: /回答 1/ }).click();
+  let rejectedOldRound = false;
+  await host.route("**/api/command", async route => {
+    if (!rejectedOldRound && route.request().postDataJSON().type === "results.publish") {
+      rejectedOldRound = true;
+      await route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "stale_round" }) });
+    } else await route.continue();
+  });
+  await host.getByRole("button", { name: "結果を公開" }).click();
+  await expect(host.getByRole("alert")).toContainText("最新のラウンド情報へ更新しました");
+  await expect(host.getByRole("heading", { name: "正解を選ぶ" })).toBeVisible();
   await host.getByRole("button", { name: "結果を公開" }).click();
   await expect(participant.getByText("結果", { exact: true })).toBeVisible();
   await expect(participant.locator(".answer-card--correct")).toHaveCount(1);
   await host.screenshot({ path: testInfo.outputPath("host-results.png"), fullPage: true });
 
-  expect(consoleErrors).toEqual([]);
+  await host.getByRole("button", { name: "次の問題へ", exact: true }).click();
+  await host.getByLabel("お題", { exact: true }).fill("次のお題");
+  await host.getByRole("button", { name: "回答受付を始める" }).click();
+  await expect(participant.getByRole("heading", { name: "次のお題" })).toBeVisible();
+  await participant.setViewportSize({ width: 390, height: 664 });
+  const mobileCanvas = participant.locator(".canvas-frame canvas");
+  const rect = await mobileCanvas.boundingBox();
+  expect(rect).not.toBeNull();
+  expect(Math.abs((rect!.width - 6) / (rect!.height - 6) - 4 / 3)).toBeLessThan(0.02);
+  expect(rect!.y).toBeGreaterThanOrEqual(0);
+  expect(rect!.y + rect!.height).toBeLessThanOrEqual(664);
+  await participant.screenshot({ path: testInfo.outputPath("mobile-drawing-4by3.png") });
+  await host.screenshot({ path: testInfo.outputPath("host-live-roster.png") });
+  await expect(host.getByRole("complementary", { name: "参加者の接続状況" })).toContainText("たろう");
+  await participant.close();
+  await expect(host.getByRole("complementary")).toContainText("切断中");
+  host.once("dialog", d => d.accept());
+  await host.getByRole("complementary").getByRole("button", { name: "除外", exact: true }).click();
+  await expect(host.getByRole("heading", { name: "参加者", exact: true })).toBeVisible();
+  expect(consoleErrors.filter(message => !message.includes("400 (Bad Request)"))).toEqual([]);
   await hostContext.close();
   await participantContext.close();
 });

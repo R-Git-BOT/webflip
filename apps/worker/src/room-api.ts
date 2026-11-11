@@ -105,7 +105,7 @@ export function createRoomApi(store: RoomStore, options: { requirePng?: boolean;
           }
         }
         service.dispatch(cookie, command);
-        if (command.type === "round.next" || command.type === "room.end") for (const key of Object.keys(receipts)) delete receipts[key];
+        if (command.type === "round.start" || command.type === "round.next" || command.type === "room.end") for (const key of Object.keys(receipts)) delete receipts[key];
         if (receiptKey) receipts[receiptKey] = { sessionId: cookie, fingerprint };
         response = json({ snapshot: service.getSnapshot(cookie) });
         if (command.type === "draft.save") response.headers.set("x-wf-update", "private-draft");

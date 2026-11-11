@@ -292,7 +292,7 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
 
       if (command.type === "round.start") {
         requireHost(command.hostId, state.hostId);
-        if (state.phase !== "waiting") throw new Error("room_not_waiting");
+        if (state.phase !== "waiting" && state.phase !== "results") throw new Error("room_not_waiting");
         const targets = state.participants.filter((participant) => participant.connected && !participant.left);
         if (targets.length === 0) throw new Error("participant_required");
         const prompt = command.prompt.trim();

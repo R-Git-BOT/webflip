@@ -8,6 +8,8 @@ When implementing from a selected generated mock, treat that image as the source
 
 ## WebFlipper visual decisions
 
+- During a round, judging, and results, keep participant names and connection status visible in a desktop sidebar and compact scrolling mobile roster; only the host may remove disconnected participants after confirmation. Results offer direct next-question setup or a separate return to lobby. Drawing and answer preview pixels must retain 4:3 on all devices. Use the smallest visible viewport plus safe-area insets so mobile browser chrome does not hide the prompt.
+
 - Use `DESIGN.md` at the repository root as the design-token source.
 - The selected reference is `Docs/design-concepts/waiting-room-dark-light-v1.png`.
 - Do not add slogans, theme copy, poetic helper text, or the phrase “おして、めくって、みんなで当てる”.

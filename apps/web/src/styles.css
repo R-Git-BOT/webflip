@@ -771,6 +771,7 @@ body:has(.qr-modal[open]) {
 
 .form-error,
 .global-error {
+  pointer-events: none;
   color: var(--danger);
   font-size: 14px;
 }
@@ -1689,4 +1690,29 @@ body:has(.qr-modal[open]) {
   .answer-action {
     min-height: 44px;
   }
+}
+
+/* Keep the game inside the browser's smallest visible viewport, including Safari chrome. */
+.game-shell { height: 100svh; box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); display: grid; grid-template-columns: 210px minmax(0,1fr); overflow: hidden; }
+.game-shell > .flow-screen--game { height: 100%; min-width: 0; }
+.game-roster { min-height: 0; display: flex; flex-direction: column; padding: 16px 12px; background: var(--paper); border-right: 1px solid var(--line); }
+.game-roster h2 { font-size: 18px; margin: 0 0 12px; }
+.game-roster__list { overflow: auto; min-height: 0; }
+.game-roster__row { padding: 10px 0; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; border-bottom: 1px solid var(--line); }
+.game-roster__row > span { overflow-wrap: anywhere; }
+.game-roster__row small { color: var(--secondary); }
+.game-roster__row button { grid-column: 2; background: transparent; border: 1px solid var(--line); }
+.results-actions { display: flex; justify-content: flex-end; gap: 16px; }
+.canvas-frame { container-type: size; width: 100%; height: 100%; max-width: none; aspect-ratio: auto; border: 0; background: transparent; display: grid; place-items: center; }
+.canvas-frame canvas, .answer-preview { box-sizing: content-box; width: min(100cqw, calc(100cqh * 4 / 3)); height: auto; max-width: none; aspect-ratio: 4 / 3; }
+.canvas-frame canvas { width: min(calc(100cqw - 6px), calc((100cqh - 6px) * 4 / 3)); border: 3px solid var(--stage-deep); }
+.answer-card__surface, .participant-judging { container-type: size; }
+@media (max-width: 700px) {
+  .game-shell { grid-template-columns: minmax(0,1fr); grid-template-rows: 86px minmax(0,1fr); }
+  .game-roster { padding: 6px 10px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .game-roster h2 { font-size: 12px; margin: 0 0 4px; }
+  .game-roster__list { display: flex; gap: 12px; overflow: auto; }
+  .game-roster__row { min-width: 100px; padding: 2px; font-size: 12px; }
+  .results-actions { gap: 8px; }
+  .results-actions .button { min-width: 0; font-size: 14px; padding: 10px; }
 }

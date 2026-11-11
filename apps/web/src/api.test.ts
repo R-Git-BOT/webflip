@@ -1,5 +1,15 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { subscribeToRoom } from "./api";
+import { api, subscribeToRoom } from "./api";
+
+it("refreshes the current room after a stale command without replaying the command", async () => {
+  const requests: string[] = [];
+  vi.stubGlobal("fetch", async (path: string) => {
+    requests.push(path);
+    return path === "/api/command" ? Response.json({ error: "stale_round" }, { status: 400 }) : Response.json({ snapshot: { room: { roomCode: "ABC234", phase: "results" } } });
+  });
+  await expect(api.command({ type: "results.publish" }, 123)).rejects.toMatchObject({ message: "stale_round", snapshot: { room: { phase: "results" } } });
+  expect(requests).toEqual(["/api/command", "/api/session"]);
+});
 
 afterEach(() => vi.unstubAllGlobals());
 

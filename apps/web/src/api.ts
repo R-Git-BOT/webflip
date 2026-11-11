@@ -7,6 +7,10 @@ export type Snapshot = {
   room: RoomState;
 };
 
+export class StaleRoundError extends Error {
+  constructor(readonly snapshot: Snapshot | null) { super("stale_round"); }
+}
+
 export type ClientCommand =
   | { type: "participants.removeDisconnected" }
   | { type: "participant.remove"; participantId: string }
@@ -56,10 +60,16 @@ export const api = {
     return request<{ snapshot: null }>("/api/leave", { method: "POST", body: "{}" });
   },
   async command(command: ClientCommand, roundToken: number | null = null) {
-    return request<{ snapshot: Snapshot }>("/api/command", {
+    try { return await request<{ snapshot: Snapshot }>("/api/command", {
       method: "POST",
       body: JSON.stringify({ ...command, commandId: crypto.randomUUID(), roundToken })
-    });
+    }); } catch (error) {
+      if (error instanceof Error && error.message === "stale_round") {
+        const { snapshot } = await api.getSession();
+        throw new StaleRoundError(snapshot);
+      }
+      throw error;
+    }
   }
 };
 
