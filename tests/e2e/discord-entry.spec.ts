@@ -7,9 +7,16 @@ test("Discord identity prefills the editable room name while anonymous entry rem
   await expect(page.getByLabel("ルーム内の名前")).toHaveValue("Discordの名前");
   await page.getByLabel("ルーム内の名前").fill("ゲーム内の名前");
   await expect(page.getByRole("button", { name: "匿名で参加する" })).toBeVisible();
+  const appearance = await page.getByRole("button", { name: "匿名で参加する" }).evaluate(element => ({ border: parseFloat(getComputedStyle(element).borderTopWidth), height: element.getBoundingClientRect().height }));
+  expect(appearance.border).toBeGreaterThan(0);
+  expect(appearance.height).toBeGreaterThanOrEqual(40);
   const label = await page.getByText("Discord: Discordの名前").boundingBox();
   const anonymous = await page.getByRole("button", { name: "匿名で参加する" }).boundingBox();
   expect(Math.abs((label!.y + label!.height / 2) - (anonymous!.y + anonymous!.height / 2))).toBeLessThan(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileButton = await page.getByRole("button", { name: "匿名で参加する" }).boundingBox();
+  expect(mobileButton!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileButton!.x + mobileButton!.width).toBeLessThanOrEqual(390);
   await expect(page.getByRole("button", { name: "ルームに参加", exact: true })).toBeEnabled();
   let received: { name: string; discord: string | undefined } | undefined;
   await page.route("**/api/rooms/ABC234/join", async route => {

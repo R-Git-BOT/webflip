@@ -1705,7 +1705,8 @@ body:has(.qr-modal[open]) {
 .results-actions { display: flex; justify-content: flex-end; gap: 16px; }
 .discord-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 24px; }
 .discord-entry p { margin: 0; font-size: 14px; color: var(--secondary); }
-.discord-entry .back-link { margin: 0; border: 0; padding: 0; background: transparent; cursor: pointer; }
+.discord-anonymous { min-height: 44px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+.discord-anonymous:hover { background: #e7e7e7; }
 .discord-login { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .discord-avatar { width: 32px; height: 32px; border-radius: 50%; }
 .roster-avatar { width: 22px; height: 22px; border-radius: 50%; vertical-align: middle; margin-right: 6px; }

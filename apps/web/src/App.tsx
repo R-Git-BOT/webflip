@@ -50,7 +50,7 @@ export function HomeScreen({ busy, error, notice = null, initialRoomCode, joinOn
       </section>
       <section className="home-actions" aria-label="開始方法">
         {discord?.configured ? <div className="discord-entry">
-          {discord.profile ? <>{discord.profile.avatarUrl ? <img className="discord-avatar" src={discord.profile.avatarUrl} alt="" /> : null}<span>Discord: {discord.profile.displayName}</span><button type="button" className="back-link" onClick={onDiscordLogout}>匿名で参加する</button></> : <><a className="button button--secondary discord-login" href={`/api/discord/start?next=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>Discordでログイン</a><p>ログインせずに匿名でも参加できます。</p></>}
+          {discord.profile ? <>{discord.profile.avatarUrl ? <img className="discord-avatar" src={discord.profile.avatarUrl} alt="" /> : null}<span>Discord: {discord.profile.displayName}</span><button type="button" className="button button--secondary discord-anonymous" onClick={onDiscordLogout}>匿名で参加する</button></> : <><a className="button button--secondary discord-login" href={`/api/discord/start?next=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>Discordでログイン</a><p>ログインせずに匿名でも参加できます。</p></>}
         </div> : null}
         {!joinOnly ? <div className="home-action-block">
           <h2>ルームを作る</h2>
