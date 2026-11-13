@@ -84,6 +84,10 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
   try {
+    if (request.method === "GET" && url.pathname === "/api/discord/profile") {
+      sendJson(response, 200, { configured: false, profile: null });
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/api/health") {
       sendJson(response, 200, { ok: true, runtime: "local-fake" });
       return;

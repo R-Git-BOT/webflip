@@ -4,7 +4,7 @@
   "account_id": "85519663611ed37ff4d007fe0996f41d",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "vars": { "TRIAL_MODE": "on" },
+  "vars": { "TRIAL_MODE": "on", "DISCORD_CLIENT_ID": "1570456253904322580", "DISCORD_REDIRECT_URI": "https://webflipper.shojoradi-pages.workers.dev/api/discord/callback" },
   "secrets": { "required": ["TRIAL_CODE"] },
   "observability": { "enabled": true, "logs": { "enabled": true, "head_sampling_rate": 0.01, "invocation_logs": false }, "traces": { "enabled": true, "head_sampling_rate": 0.001 } },
   "assets": { "directory": "../web/dist/client", "binding": "ASSETS", "not_found_handling": "single-page-application", "run_worker_first": ["/api/*", "/ws", "/trial", "/trial/*"] },

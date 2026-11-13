@@ -41,6 +41,8 @@ export function createBlobRoomStore(metadata: RoomStore, bucket: BlobBucket) {
         entry[1] = engine.getState();
       }
       state.receipts = {};
+      state.blockedDiscord = {};
+      for (const [, session] of state.sessions) delete session.discordId;
       await this.put(state);
     },
     async get() {

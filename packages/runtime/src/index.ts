@@ -10,9 +10,15 @@ type LocalRoomServiceDependencies = {
   nextRoomCode(): string;
 };
 
+export type DiscordIdentity = { id: string; displayName: string; avatar: string | null };
+export function discordAvatarUrl(identity: DiscordIdentity): string {
+  return identity.avatar
+    ? `https://cdn.discordapp.com/avatars/${identity.id}/${identity.avatar}.png?size=128`
+    : `https://cdn.discordapp.com/embed/avatars/${(BigInt(identity.id) >> 22n) % 6n}.png`;
+}
 type Session =
-  | { role: "host"; roomCode: string; hostId: string }
-  | { role: "participant"; roomCode: string; participantId: string };
+  | { role: "host"; roomCode: string; hostId: string; discordId?: string }
+  | { role: "participant"; roomCode: string; participantId: string; discordId?: string };
 
 export type RoomSnapshot = {
   role: Session["role"];
@@ -28,8 +34,8 @@ export type LocalRoomService = {
     capacity: number;
     answerSeconds: number;
     scoreMode: ScoreMode;
-  }): { roomCode: string; sessionId: string };
-  joinRoom(input: { roomCode: string; name: string; previousSessionId?: string }): { sessionId: string };
+  }, discord?: DiscordIdentity): { roomCode: string; sessionId: string };
+  joinRoom(input: { roomCode: string; name: string; previousSessionId?: string; discord?: DiscordIdentity }): { sessionId: string };
   leaveRoom(sessionId: string): { roomCode: string };
   getSnapshot(sessionId: string): RoomSnapshot;
   dispatch(sessionId: string, command: LocalCommand): { ok: true };
@@ -38,6 +44,7 @@ export type LocalRoomService = {
 
 export type PersistedRoomService = {
   blockedSessions?: Record<string, string>;
+  blockedDiscord?: Record<string, string>;
   receipts?: Record<string, { sessionId: string; fingerprint: string }>;
   rooms: [string, RoomState][];
   sessions: [string, Session][];
@@ -103,6 +110,7 @@ export function createLocalRoomService(
   const sessions = new Map<string, Session>();
   const receipts = structuredClone(persisted?.receipts ?? {});
   const blockedSessions = structuredClone(persisted?.blockedSessions ?? {});
+  const blockedDiscord = structuredClone(persisted?.blockedDiscord ?? {});
   for (const [code, state] of persisted?.rooms ?? []) {
     rooms.set(code, createRoomEngine({ ...state.settings, roomId: state.roomId, roomCode: code, hostId: state.hostId }, state));
   }
@@ -121,9 +129,11 @@ export function createLocalRoomService(
     },
     exportState() {
       for (const [id, code] of Object.entries(blockedSessions)) if (!rooms.has(code) || rooms.get(code)!.getState().phase === "ended") delete blockedSessions[id];
-      return structuredClone({ rooms: [...rooms].map(([code, engine]) => [code, engine.getState()] as [string, RoomState]), sessions: [...sessions], receipts, blockedSessions });
+      for (const [id, code] of Object.entries(blockedDiscord)) if (!rooms.has(code) || rooms.get(code)!.getState().phase === "ended") delete blockedDiscord[id];
+      for (const session of sessions.values()) if (rooms.get(session.roomCode)?.getState().phase === "ended") delete session.discordId;
+      return structuredClone({ rooms: [...rooms].map(([code, engine]) => [code, engine.getState()] as [string, RoomState]), sessions: [...sessions], receipts, blockedSessions, blockedDiscord });
     },
-    createRoom(settings) {
+    createRoom(settings, discord) {
       const roomId = dependencies.nextId();
       const hostId = dependencies.nextId();
       const roomCode = dependencies.nextRoomCode();
@@ -132,24 +142,31 @@ export function createLocalRoomService(
         roomCode,
         createRoomEngine({ roomId, roomCode, hostId, ...settings })
       );
-      sessions.set(sessionId, { role: "host", roomCode, hostId });
+      sessions.set(sessionId, { role: "host", roomCode, hostId, ...(discord ? { discordId: discord.id } : {}) });
       return { roomCode, sessionId };
     },
     joinRoom(input) {
       if (input.previousSessionId && blockedSessions[input.previousSessionId] === input.roomCode) throw new Error("participant_excluded");
       const room = rooms.get(input.roomCode);
       if (!room) throw new Error("room_not_found");
+      if (room.getState().phase === "ended") throw new Error("room_ended");
+      if (input.discord) {
+        if (blockedDiscord[`${input.roomCode}:${input.discord.id}`] === input.roomCode) throw new Error("participant_excluded");
+        for (const [sessionId, session] of sessions) if (session.roomCode === input.roomCode && session.discordId === input.discord.id) return { sessionId };
+      }
       const participantId = dependencies.nextId();
       const sessionId = crypto.randomUUID();
       room.dispatch({
         type: "participant.join",
         participantId,
-        name: input.name
+        name: input.name,
+        ...(input.discord ? { avatarUrl: discordAvatarUrl(input.discord) } : {})
       });
       sessions.set(sessionId, {
         role: "participant",
         roomCode: input.roomCode,
-        participantId
+        participantId,
+        ...(input.discord ? { discordId: input.discord.id } : {})
       });
       return { sessionId };
     },
@@ -209,6 +226,7 @@ export function createLocalRoomService(
         const result = room.dispatch({ type: "participant.exit", participantId: command.participantId });
         for (const [id, target] of sessions) if (target.role === "participant" && target.roomCode === session.roomCode && target.participantId === command.participantId) {
           blockedSessions[id] = session.roomCode;
+          if (target.discordId) blockedDiscord[`${session.roomCode}:${target.discordId}`] = session.roomCode;
           sessions.delete(id);
         }
         return result;

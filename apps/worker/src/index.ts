@@ -1,14 +1,16 @@
 import { createRoomApi } from "./room-api";
 import { createBlobRoomStore } from "./blob-room-store";
-import type { PersistedRoomService } from "../../../packages/runtime/src/index";
+import { discordAvatarUrl, type PersistedRoomService } from "../../../packages/runtime/src/index";
 import { issueTrialCookie, verifyTrialCookie, verifyTrialCode, trialPage, safeTrialPath } from "./trial-access";
 import { createStorageRecovery } from "./storage-recovery";
 import { verifyDummyToken } from "./dummy-access";
+import { createDiscordOAuth, type DiscordIdentity } from "./discord-oauth";
+import { createDiscordAuthHttp } from "./discord-auth-http";
 export { TrialGateDurableObject } from "./trial-gate";
 
 type Socket = WebSocket;
 type State = DurableObjectState;
-type Env = WorkerBindings & { DUMMY_ACCESS_SECRET?: string };
+type Env = WorkerBindings & { DUMMY_ACCESS_SECRET?: string; DISCORD_CLIENT_ID?: string; DISCORD_CLIENT_SECRET?: string; DISCORD_REDIRECT_URI?: string };
 
 export class RoomDurableObject {
   private readonly store;
@@ -179,10 +181,11 @@ export default {
 async function routeRequest(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const isApi = url.pathname.startsWith("/api/") || url.pathname === "/ws";
+    const isDiscord = url.pathname.startsWith("/api/discord/");
     const isTrial = url.pathname === "/trial" || url.pathname === "/trial/login";
     if (!isApi && !isTrial) return env.ASSETS.fetch(request);
     if (env.TRIAL_MODE === "closed") return Response.json({ error: "trial_unavailable" }, { status: 503 });
-    if (isApi && !((request.method === "GET" && ["/api/session", "/ws"].includes(url.pathname)) || (request.method === "POST" && (["/api/rooms", "/api/command", "/api/leave"].includes(url.pathname) || /^\/api\/rooms\/[A-Z0-9]{6}\/join$/.test(url.pathname))))) return new Response(null, { status: 404 });
+    if (isApi && !((request.method === "GET" && ["/api/session", "/ws", "/api/discord/start", "/api/discord/callback", "/api/discord/profile"].includes(url.pathname)) || (request.method === "POST" && (["/api/rooms", "/api/command", "/api/leave", "/api/discord/logout"].includes(url.pathname) || /^\/api\/rooms\/[A-Z0-9]{6}\/join$/.test(url.pathname))))) return new Response(null, { status: 404 });
     if ((url.pathname === "/ws" || !["GET", "HEAD"].includes(request.method)) && request.headers.get("origin") && request.headers.get("origin") !== url.origin) return Response.json({ error: "invalid_origin" }, { status: 403 });
     const ip = request.headers.get("cf-connecting-ip") ?? "local";
     if (env.REQUEST_LIMITER && !(await env.REQUEST_LIMITER.limit({ key: ip })).success) return Response.json({ error: "rate_limited" }, { status: 429, headers: { "retry-after": "60" } });
@@ -205,6 +208,34 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
       request = new Request(request, { body });
     }
     const trialEnabled = env.TRIAL_MODE !== "off";
+    const discordConfigured = Boolean(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET && env.DISCORD_REDIRECT_URI && env.TRIAL_GATE);
+    const discordGate = env.TRIAL_GATE?.get(env.TRIAL_GATE.idFromName("limited-trial"));
+    const discordCall = async <T>(action: string, data: Record<string, unknown> = {}): Promise<T> => {
+      if (!discordGate) throw new Error("discord_unavailable");
+      const response = await discordGate.fetch(new Request("https://gate/discord", { method: "POST", body: JSON.stringify({ action, ...data }) }));
+      if (!response.ok) throw new Error("discord_unavailable");
+      return ((await response.json()) as { value: T }).value;
+    };
+    const admitDiscord = async (actor: string, action: "refresh" | "command") => {
+      if (!trialEnabled || !discordGate) return null;
+      const admission = await discordGate.fetch(new Request("https://gate/admit", { method: "POST", body: JSON.stringify({ action, actor }) }));
+      if (admission.ok) return null;
+      const result = await admission.json() as { reason: string; retryAfter: number };
+      return Response.json({ error: result.reason }, { status: 429, headers: { "retry-after": String(result.retryAfter) } });
+    };
+    const discordHttp = discordConfigured ? createDiscordAuthHttp({
+      begin: next => discordCall<string>("discord.begin", { next }),
+      consumeState: key => discordCall<string | null>("discord.state", { key }),
+      issueGrant: identity => discordCall<string>("discord.issue", { identity })
+    }, createDiscordOAuth({ clientId: env.DISCORD_CLIENT_ID!, clientSecret: env.DISCORD_CLIENT_SECRET!, redirectUri: env.DISCORD_REDIRECT_URI! })) : null;
+    if (url.pathname === "/api/discord/callback") {
+      if (!discordHttp || new URL(env.DISCORD_REDIRECT_URI!).origin !== url.origin) return Response.json({ error: "discord_unavailable" }, { status: 503 });
+      if (env.LOGIN_LIMITER && !(await env.LOGIN_LIMITER.limit({ key: ip })).success) return Response.json({ error: "rate_limited" }, { status: 429 });
+      const denied = await admitDiscord(`discord-callback:${ip}`, "refresh");
+      if (denied) return denied;
+      try { return await discordHttp.callback(request, Date.now()); }
+      catch { return Response.json({ error: "discord_auth_failed" }, { status: 400, headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" } }); }
+    }
     const dummyRoom = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/join$/)?.[1]
       ?? request.headers.get("cookie")?.match(/(?:^|;\s*)wf_room=([A-Z0-9]{6})(?:;|$)/)?.[1];
     const dummyToken = request.headers.get("x-wf-dummy-token");
@@ -223,10 +254,36 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
         return new Response(null, { status: 303, headers: { location: safeTrialPath(next), "set-cookie": `wf_trial=${value}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`, "cache-control": "no-store" } });
       }
       const accessCookie = request.headers.get("cookie")?.match(/(?:^|;\s*)wf_trial=([^;]+)/)?.[1];
-      if (!dummyAuthorized && !await verifyTrialCookie(accessCookie, env.TRIAL_CODE, Date.now())) return Response.json({ error: "trial_required" }, { status: 403 });
+      if (!dummyAuthorized && !await verifyTrialCookie(accessCookie, env.TRIAL_CODE, Date.now())) {
+        if (url.pathname === "/api/discord/start") return Response.redirect(`${url.origin}/trial?next=${encodeURIComponent(url.pathname + url.search)}`, 303);
+        return Response.json({ error: "trial_required" }, { status: 403 });
+      }
       actor = dummyAuthorized ? `dummy:${dummyToken!.split(".")[3]}` : accessCookie!.split(".")[1]!;
     }
+    if (isDiscord) {
+      if (url.pathname === "/api/discord/profile" && !discordConfigured) return Response.json({ configured: false, profile: null }, { headers: { "cache-control": "no-store" } });
+      const denied = await admitDiscord(actor, request.method === "GET" ? "refresh" : "command");
+      if (denied) return denied;
+      const grantKey = request.headers.get("cookie")?.match(/(?:^|;\s*)wf_discord=([a-f0-9]{64})(?:;|$)/)?.[1];
+      if (url.pathname === "/api/discord/profile") {
+        const identity = discordConfigured && grantKey ? await discordCall<DiscordIdentity | null>("discord.read", { key: grantKey }) : null;
+        return Response.json({ configured: discordConfigured, profile: identity ? { displayName: identity.displayName, avatarUrl: discordAvatarUrl(identity) } : null }, { headers: { "cache-control": "no-store" } });
+      }
+      if (url.pathname === "/api/discord/logout") {
+        if (discordConfigured && grantKey) await discordCall("discord.consume", { key: grantKey });
+        return Response.json({ ok: true }, { headers: { "set-cookie": "wf_discord=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0", "cache-control": "no-store" } });
+      }
+      if (url.pathname === "/api/discord/start") {
+        if (!discordHttp || new URL(env.DISCORD_REDIRECT_URI!).origin !== url.origin) return Response.json({ error: "discord_unavailable" }, { status: 503 });
+        if (env.LOGIN_LIMITER && !(await env.LOGIN_LIMITER.limit({ key: ip })).success) return Response.json({ error: "rate_limited" }, { status: 429 });
+        return discordHttp.start(request, Date.now());
+      }
+      return new Response(null, { status: 404 });
+    }
     const create = request.method === "POST" && url.pathname === "/api/rooms";
+    const discordRequested = request.headers.get("x-wf-use-discord") === "1";
+    const incomingGrant = request.headers.get("cookie")?.match(/(?:^|;\s*)wf_discord=([a-f0-9]{64})(?:;|$)/)?.[1];
+    if ((create || url.pathname.endsWith("/join")) && discordRequested && (!discordConfigured || !incomingGrant)) return Response.json({ error: "discord_expired" }, { status: 401 });
     const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
     const code = create ? Array.from(crypto.getRandomValues(new Uint8Array(6)), n => alphabet[n % alphabet.length]).join("")
       : url.pathname.match(/^\/api\/rooms\/([A-Z0-9]{6})\/join$/)?.[1]
@@ -244,12 +301,27 @@ async function routeRequest(request: Request, env: Env): Promise<Response> {
     if (!code) return Response.json(url.pathname === "/api/session" ? { snapshot: null } : { error: "session_not_found" }, { status: url.pathname === "/api/session" ? 200 : 401 });
     const internalUrl = new URL(request.url);
     internalUrl.hostname = code.toLowerCase();
-    const response = await env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(new Request(internalUrl, request));
+    const forwardedHeaders = new Headers(request.headers);
+    forwardedHeaders.delete("x-wf-discord-identity");
+    const grantKey = forwardedHeaders.get("cookie")?.match(/(?:^|;\s*)wf_discord=([a-f0-9]{64})(?:;|$)/)?.[1];
+    forwardedHeaders.delete("x-wf-use-discord");
+    const useDiscord = discordRequested && discordConfigured && grantKey && (create || url.pathname.endsWith("/join"));
+    const discordIdentity = useDiscord ? await discordCall<DiscordIdentity | null>("discord.consume", { key: grantKey }) : null;
+    if (useDiscord && !discordIdentity) {
+      if (gate && create) await gate.fetch(new Request("https://gate/release", { method: "POST", body: JSON.stringify({ action: "release", actor, roomCode: code }) }));
+      return Response.json({ error: "discord_expired" }, { status: 401 });
+    }
+    if (discordIdentity) forwardedHeaders.set("x-wf-discord-identity", encodeURIComponent(JSON.stringify(discordIdentity)));
+    const response = await env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(new Request(new Request(internalUrl, request), { headers: forwardedHeaders }));
     if (gate && ((create && !response.ok) || (response.ok && url.pathname === "/api/command" && response.headers.get("x-wf-phase") === "ended"))) {
       await gate.fetch(new Request("https://gate/release", { method: "POST", body: JSON.stringify({ action: "release", actor, roomCode: code }) }));
     }
     if (response.status === 101) return response;
     const result = new Response(response.body, response);
+    if (discordIdentity) {
+      const replacement = result.ok ? "" : await discordCall<string>("discord.issue", { identity: discordIdentity });
+      result.headers.append("set-cookie", `wf_discord=${replacement}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${replacement ? 300 : 0}`);
+    }
     result.headers.set("cache-control", "no-store");
     result.headers.set("x-robots-tag", "noindex, nofollow");
     if (result.ok && (create || url.pathname.endsWith("/join"))) result.headers.append("set-cookie", `wf_room=${code}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=7200`);

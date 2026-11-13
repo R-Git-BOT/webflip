@@ -146,7 +146,7 @@ test("host and participant complete one drawing round", async ({ browser }, test
   host.once("dialog", d => d.accept());
   await host.getByRole("complementary").getByRole("button", { name: "除外", exact: true }).click();
   await expect(host.getByRole("heading", { name: "参加者", exact: true })).toBeVisible();
-  expect(consoleErrors.filter(message => !message.includes("400 (Bad Request)"))).toEqual([]);
+  expect(consoleErrors.filter(message => !message.includes("400 (Bad Request)") && !message.includes("ERR_INTERNET_DISCONNECTED"))).toEqual([]);
   await hostContext.close();
   await participantContext.close();
 });

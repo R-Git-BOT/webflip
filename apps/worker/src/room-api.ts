@@ -1,4 +1,4 @@
-import { createLocalRoomService, type PersistedRoomService, type LocalCommand } from "../../../packages/runtime/src/index";
+import { createLocalRoomService, type PersistedRoomService, type LocalCommand, type DiscordIdentity } from "../../../packages/runtime/src/index";
 import { validatePngDataUrl } from "./png";
 import { isRoomCapacity } from "../../../packages/domain/src/index";
 
@@ -15,6 +15,12 @@ export function createRoomApi(store: RoomStore, options: { requirePng?: boolean;
   async function handle(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const cookie = request.headers.get("cookie")?.match(/(?:^|;\s*)wf_session=([^;]+)/)?.[1];
+    const encodedDiscord = request.headers.get("x-wf-discord-identity");
+    let discord: DiscordIdentity | undefined;
+    if (encodedDiscord) {
+      try { discord = JSON.parse(decodeURIComponent(encodedDiscord)) as DiscordIdentity; }
+      catch { return json({ error: "discord_identity_invalid" }, 400); }
+    }
     let persisted: PersistedRoomService | undefined;
     try { persisted = await store.get() as PersistedRoomService | undefined; }
     catch { return json({ error: "storage_unavailable" }, 503); }
@@ -44,12 +50,12 @@ export function createRoomApi(store: RoomStore, options: { requirePng?: boolean;
         if (service.exportState().rooms.length) return json({ error: "room_exists" }, 409);
         const input = await request.json() as { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" };
         if (!isRoomCapacity(input.capacity) || ![30,60,90,120,180].includes(input.answerSeconds) || !["none", "correct-count"].includes(input.scoreMode)) throw new Error("invalid_settings");
-        const created = service.createRoom(input);
+        const created = service.createRoom(input, discord);
         if (options.isSessionConnected) service.setConnection(created.sessionId, false, Date.now());
         response = json({ roomCode: created.roomCode, snapshot: service.getSnapshot(created.sessionId) }, 201, sessionCookie(created.sessionId));
       } else if (request.method === "POST" && /\/api\/rooms\/[A-Z0-9]{6}\/join$/.test(url.pathname)) {
         const input = await request.json() as { name: string };
-        const joined = service.joinRoom({ roomCode: url.pathname.split("/")[3]!, name: input.name, ...(cookie ? { previousSessionId: cookie } : {}) });
+        const joined = service.joinRoom({ roomCode: url.pathname.split("/")[3]!, name: input.name, ...(cookie ? { previousSessionId: cookie } : {}), ...(discord ? { discord } : {}) });
         if (options.isSessionConnected) service.setConnection(joined.sessionId, false, Date.now());
         response = json({ snapshot: service.getSnapshot(joined.sessionId) }, 200, sessionCookie(joined.sessionId));
       } else if (request.method === "POST" && url.pathname === "/internal/connection") {

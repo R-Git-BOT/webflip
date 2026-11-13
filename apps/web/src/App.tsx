@@ -13,16 +13,21 @@ type HomeScreenProps = {
   notice?: string | null;
   initialRoomCode: string;
   joinOnly?: boolean;
+  discord?: { configured: boolean; profile: { displayName: string; avatarUrl: string | null } | null } | null;
+  onDiscordLogout?(): void;
   onCreate(input: { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" }): void;
   onJoin(input: { roomCode: string; name: string }): void;
 };
 
-export function HomeScreen({ busy, error, notice = null, initialRoomCode, joinOnly = false, onCreate, onJoin }: HomeScreenProps) {
+export function HomeScreen({ busy, error, notice = null, initialRoomCode, joinOnly = false, discord = null, onDiscordLogout, onCreate, onJoin }: HomeScreenProps) {
   const [capacity, setCapacity] = useState(10);
   const [answerSeconds, setAnswerSeconds] = useState(60);
   const [scoreMode, setScoreMode] = useState<"none" | "correct-count">("none");
   const [roomCode, setRoomCode] = useState(initialRoomCode);
   const [name, setName] = useState("");
+  useEffect(() => {
+    if (discord?.profile) setName(current => current || Array.from(discord.profile!.displayName.replace(/[\n\r\t\u0000-\u001f\u007f]/gu, "").trim()).slice(0, 20).join(""));
+  }, [discord?.profile?.displayName]);
 
   return (
     <main className={`home-shell ${joinOnly ? "home-shell--join-only" : ""}`}>
@@ -44,6 +49,9 @@ export function HomeScreen({ busy, error, notice = null, initialRoomCode, joinOn
         </div>
       </section>
       <section className="home-actions" aria-label="開始方法">
+        {discord?.configured ? <div className="discord-entry">
+          {discord.profile ? <>{discord.profile.avatarUrl ? <img className="discord-avatar" src={discord.profile.avatarUrl} alt="" /> : null}<span>Discord: {discord.profile.displayName}</span><button type="button" className="back-link" onClick={onDiscordLogout}>匿名で参加する</button></> : <><a className="button button--secondary discord-login" href={`/api/discord/start?next=${encodeURIComponent(typeof window === "undefined" ? "/" : window.location.pathname + window.location.search)}`}>Discordでログイン</a><p>ログインせずに匿名でも参加できます。</p></>}
+        </div> : null}
         {!joinOnly ? <div className="home-action-block">
           <h2>ルームを作る</h2>
           <form onSubmit={(event) => { event.preventDefault(); onCreate({ capacity, answerSeconds, scoreMode }); }}>
@@ -158,7 +166,7 @@ function ParticipantWaitingScreen({ room, participantId, onLeave }: { room: Room
       <AppHeader roomCode={room.roomCode} status={`${room.participants.filter((item) => item.connected && !item.left).length}人が接続中`} onLeave={onLeave} />
       <div className="flow-two-column">
         <section className="dark-message">
-          <span className="avatar avatar--large">{Array.from(me?.name ?? "?")[0]}</span>
+          <span className="avatar avatar--large">{me?.avatarUrl ? <img src={me.avatarUrl} alt="" /> : Array.from(me?.name ?? "?")[0]}</span>
           <h1>{me?.name}</h1>
           <p>参加しました</p>
         </section>
@@ -178,7 +186,7 @@ function ParticipantList({ participants, scoreMode }: { participants: Participan
       {participants.map((participant) => (
         <div key={participant.id} className="compact-participant-row">
           <span className={`status-dot ${participant.connected ? "" : "status-dot--offline"}`} />
-          <span>{participant.name}</span>
+          <span>{participant.avatarUrl ? <img className="roster-avatar" src={participant.avatarUrl} alt="" /> : null}{participant.name}</span>
           {scoreMode === "correct-count" ? <span>{participant.correctCount}回</span> : null}
         </div>
       ))}
@@ -425,7 +433,7 @@ function ScreenRouter({ snapshot, send, onOpenRound, onLeave, onReturnToStart, o
 }
 
 function GameRoster({ snapshot, send }: { snapshot: Snapshot; send(command: ClientCommand): void }) {
-  return <aside className="game-roster" aria-label="参加者の接続状況"><h2>参加者</h2><div className="game-roster__list">{snapshot.room.participants.filter(p => !p.left).map(p => <div key={p.id} className="game-roster__row"><span>{p.name}</span><small>{p.connected ? "接続中" : "切断中"}</small>{snapshot.role === "host" && !p.connected ? <button onClick={() => { if (window.confirm(`${p.name}を除外しますか？`)) send({ type: "participant.remove", participantId: p.id }); }}>除外</button> : null}</div>)}</div></aside>;
+  return <aside className="game-roster" aria-label="参加者の接続状況"><h2>参加者</h2><div className="game-roster__list">{snapshot.room.participants.filter(p => !p.left).map(p => <div key={p.id} className="game-roster__row"><span>{p.avatarUrl ? <img className="roster-avatar" src={p.avatarUrl} alt="" /> : null}{p.name}</span><small>{p.connected ? "接続中" : "切断中"}</small>{snapshot.role === "host" && !p.connected ? <button onClick={() => { if (window.confirm(`${p.name}を除外しますか？`)) send({ type: "participant.remove", participantId: p.id }); }}>除外</button> : null}</div>)}</div></aside>;
 }
 
 function messageFor(error: unknown) {
@@ -446,6 +454,7 @@ function messageFor(error: unknown) {
     invalid_command: "操作形式を確認できませんでした。ページを再読み込みしてください。",
     invalid_drawing: "描画データを保存できませんでした。ページを再読み込みしてください。",
     room_not_judging: "結果はすでに公開済みか、判定画面が更新されています。",
+    discord_expired: "Discordの認証期限が切れました。もう一度Discordでログインしてください。",
     request_too_large: "回答データが大きすぎます。描画量を減らしてください。"
   };
   return messages[key] ?? `操作を完了できませんでした。もう一度お試しください。${/^[a-z_]{1,60}$/.test(key) ? `（${key}）` : ""}`;
@@ -462,6 +471,7 @@ export function selectInitialSnapshot<T extends { room: { roomCode: string } }>(
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const sound = useRoomSound(snapshot);
+  const [discord, setDiscord] = useState<{ configured: boolean; profile: { displayName: string; avatarUrl: string | null } | null } | null>(null);
   const [loading, setLoading] = useState(() => typeof window !== "undefined");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -479,6 +489,13 @@ export function App() {
       .catch(() => undefined)
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (loading || snapshot) return;
+    let active = true;
+    void api.getDiscordProfile().then(value => { if (active) setDiscord(value); }).catch(() => { if (active) setDiscord(null); });
+    return () => { active = false; };
+  }, [loading, snapshot]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -509,6 +526,7 @@ export function App() {
       const result = await action();
       acceptSnapshot(result.snapshot);
     } catch (caught) {
+      if (caught instanceof Error && caught.message === "discord_expired") setDiscord(current => current ? { ...current, profile: null } : null);
       if (caught instanceof StaleRoundError) {
         if (caught.snapshot) acceptSnapshot(caught.snapshot);
         else setSnapshot(null);
@@ -557,9 +575,11 @@ export function App() {
         error={error}
         notice={notice}
         initialRoomCode={initialRoomCode}
+        discord={discord}
+        onDiscordLogout={() => { void api.discordLogout().then(() => setDiscord(current => current ? { ...current, profile: null } : null)).catch(() => setError("Discord連携を解除できませんでした。")); }}
         joinOnly={initialRoomCode.length === 6}
-        onCreate={(input) => void run(() => api.createRoom(input))}
-        onJoin={(input) => void run(() => api.joinRoom(input))}
+        onCreate={(input) => void run(() => api.createRoom(input, Boolean(discord?.profile)))}
+        onJoin={(input) => void run(() => api.joinRoom(input, Boolean(discord?.profile)))}
       />
     );
   }

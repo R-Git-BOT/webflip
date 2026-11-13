@@ -11,6 +11,7 @@ export type RoomSettings = {
 export type Participant = {
   id: string;
   name: string;
+  avatarUrl?: string;
   connected: boolean;
   correctCount: number;
   left?: boolean;
@@ -74,6 +75,7 @@ export type JoinParticipantCommand = {
   type: "participant.join";
   participantId: string;
   name: string;
+  avatarUrl?: string;
 };
 
 export type StartRoundCommand = {
@@ -252,6 +254,7 @@ export function createRoomEngine(input: CreateRoomInput, restoredState?: RoomSta
         state.participants.push({
           id: command.participantId,
           name,
+          ...(command.avatarUrl ? { avatarUrl: command.avatarUrl } : {}),
           connected: true,
           correctCount: 0
         });

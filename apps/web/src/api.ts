@@ -41,21 +41,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getDiscordProfile() { return request<{ configured: boolean; profile: { displayName: string; avatarUrl: string | null } | null }>("/api/discord/profile"); },
+  discordLogout() { return request<{ ok: boolean }>("/api/discord/logout", { method: "POST", body: "{}" }); },
   hostActivity() {
     return request<{ snapshot: Snapshot }>("/api/command", { method: "POST", body: JSON.stringify({ type: "host.activity" }) });
   },
   async getSession() {
     return request<{ snapshot: Snapshot | null }>("/api/session");
   },
-  async createRoom(input: { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" }) {
+  async createRoom(input: { capacity: number; answerSeconds: number; scoreMode: "none" | "correct-count" }, discord = false) {
     return request<{ roomCode: string; snapshot: Snapshot }>("/api/rooms", {
       method: "POST",
+      ...(discord ? { headers: { "x-wf-use-discord": "1" } } : {}),
       body: JSON.stringify(input)
     });
   },
-  async joinRoom(input: { roomCode: string; name: string }) {
+  async joinRoom(input: { roomCode: string; name: string }, discord = false) {
     return request<{ snapshot: Snapshot }>(`/api/rooms/${input.roomCode}/join`, {
       method: "POST",
+      ...(discord ? { headers: { "x-wf-use-discord": "1" } } : {}),
       body: JSON.stringify({ name: input.name })
     });
   },

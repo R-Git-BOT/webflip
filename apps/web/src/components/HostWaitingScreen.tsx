@@ -14,6 +14,7 @@ import { JoinQrCode } from "./JoinQrCode";
 type Participant = {
   id: string;
   name: string;
+  avatarUrl?: string;
   connected: boolean;
   correctCount: number;
 };
@@ -110,7 +111,7 @@ export function HostWaitingScreen({
                     className="avatar"
                     style={{ backgroundColor: AVATAR_COLORS[index % AVATAR_COLORS.length] }}
                   >
-                    {initialOf(participant.name)}
+                    {participant.avatarUrl ? <img src={participant.avatarUrl} alt="" /> : initialOf(participant.name)}
                   </span>
                   <span className="participant-name">{participant.name}</span>
                   <span

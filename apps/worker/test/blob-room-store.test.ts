@@ -13,14 +13,16 @@ it("ends a cold room and removes its drawings even when R2 reads are unavailable
     async delete(key: string) { blobs.delete(key); }
   };
   const service = createLocalRoomService({ nextId: () => crypto.randomUUID(), nextRoomCode: () => "ABC234" });
-  const host = service.createRoom({ capacity: 10, answerSeconds: 60, scoreMode: "none" });
-  const guest = service.joinRoom({ roomCode: "ABC234", name: "太郎" });
+  const host = service.createRoom({ capacity: 10, answerSeconds: 60, scoreMode: "none" }, { id: "123456789012345678", displayName: "ホスト", avatar: null });
+  const guest = service.joinRoom({ roomCode: "ABC234", name: "太郎", discord: { id: "987654321098765432", displayName: "太郎", avatar: null } });
   service.dispatch(host.sessionId, { type: "round.start", prompt: "空", answerSeconds: 60, revealNamesDuringJudging: false });
   service.dispatch(guest.sessionId, { type: "draft.save", drawing: { operations: [{ kind: "clear" }] } });
   await createBlobRoomStore(metadata, bucket).put(service.exportState());
   failReads = true;
   const coldStore = createBlobRoomStore(metadata, bucket);
   await coldStore.terminate();
+  expect(JSON.stringify(await coldStore.get())).not.toContain("123456789012345678");
+  expect(JSON.stringify(await coldStore.get())).not.toContain("987654321098765432");
   expect(await coldStore.get()).toMatchObject({ rooms: [["ABC234", { phase: "ended", participants: [], round: null }]] });
   expect(blobs.size).toBe(0);
 });
