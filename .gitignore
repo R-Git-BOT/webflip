@@ -11,3 +11,4 @@ playwright-report/
 .wrangler/
 .dev.vars*
 .playwright-cli/
+apps/secret/
